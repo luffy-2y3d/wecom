@@ -15,16 +15,21 @@ const plugin = {
   configSchema: emptyPluginConfigSchema(),
   /**
    * **register (注册插件)**
-   * 
+   *
    * OpenClaw 插件入口点。
    * 1. 注入 Runtime 环境 (api.runtime)。
    * 2. 注册 WeCom 渠道插件 (ChannelPlugin)。
-   * 3. 注册 Webhook HTTP 处理器 (handleWecomWebhookRequest)。
+   * 3. 注册 Webhook HTTP 路由 (/plugins/wecom/*)。
    */
   register(api: OpenClawPluginApi) {
     setWecomRuntime(api.runtime);
     api.registerChannel({ plugin: wecomPlugin });
-    api.registerHttpHandler(handleWecomWebhookRequest);
+    api.registerHttpRoute({
+      path: "/plugins/wecom",
+      handler: handleWecomWebhookRequest,
+      auth: "plugin",
+      match: "prefix",
+    });
   },
 };
 
