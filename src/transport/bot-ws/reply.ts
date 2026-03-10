@@ -15,6 +15,16 @@ export function createBotWsReplyHandle(params: {
     return streamId;
   };
 
+  let ackSent = false;
+  const ackTimer = setTimeout(() => {
+    if (ackSent) return;
+    ackSent = true;
+    params.client.replyStream(params.frame, resolveStreamId(), "⏳ 正在思考中...\n\n", false)
+      .catch(() => { /* ignore */ });
+  }, 4000);
+
+  const cleanupTimer = () => clearTimeout(ackTimer);
+
   return {
     context: {
       transport: "bot-ws",
@@ -29,17 +39,22 @@ export function createBotWsReplyHandle(params: {
       },
     },
     deliver: async (payload: ReplyPayload, info) => {
-      if (payload.isReasoning) {
-        return;
-      }
+      if (payload.isReasoning) return;
+      
       const text = payload.text?.trim();
-      if (!text) {
-        return;
+      if (!text) return;
+
+      if (!ackSent) {
+        cleanupTimer();
+        ackSent = true;
       }
+      
       await params.client.replyStream(params.frame, resolveStreamId(), text, info.kind === "final");
       params.onDeliver?.();
     },
     fail: async (error: unknown) => {
+      cleanupTimer();
+      ackSent = true;
       const message = error instanceof Error ? error.message : String(error);
       await params.client.replyStream(params.frame, resolveStreamId(), `WeCom WS reply failed: ${message}`, true);
       params.onFail?.(error);

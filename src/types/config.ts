@@ -49,7 +49,12 @@ export type WecomBotConfig = {
 
 export type WecomAgentConfig = {
   corpId: string;
-  corpSecret: string;
+  agentSecret?: string;
+  /**
+   * Deprecated compatibility alias for old configs.
+   * New configs should use `agentSecret`.
+   */
+  corpSecret?: string;
   agentId?: number | string;
   token: string;
   encodingAESKey: string;

@@ -13,8 +13,11 @@ describe("resolveWecomAccount", () => {
           "acct-a": {
             enabled: true,
             bot: {
-              token: "token-a",
-              encodingAESKey: "aes-a",
+              primaryTransport: "webhook",
+              webhook: {
+                token: "token-a",
+                encodingAESKey: "aes-a",
+              },
             },
           },
         },
@@ -34,5 +37,39 @@ describe("resolveWecomAccount", () => {
     expect(account.accountId).toBe("acct-a");
     expect(account.enabled).toBe(true);
     expect(account.configured).toBe(true);
+  });
+
+  it("treats literal default as an alias for configured default account", () => {
+    const account = resolveWecomAccount({ cfg, accountId: "default" });
+    expect(account.accountId).toBe("acct-a");
+    expect(account.enabled).toBe(true);
+    expect(account.configured).toBe(true);
+  });
+
+  it("accepts agentSecret for fresh configs and normalizes it for runtime use", () => {
+    const agentCfg: OpenClawConfig = {
+      channels: {
+        wecom: {
+          enabled: true,
+          defaultAccount: "acct-agent",
+          accounts: {
+            "acct-agent": {
+              enabled: true,
+              agent: {
+                corpId: "corp-id",
+                agentSecret: "agent-secret",
+                agentId: 1000001,
+                token: "token",
+                encodingAESKey: "1234567890123456789012345678901234567890123",
+              },
+            },
+          },
+        },
+      },
+    } as OpenClawConfig;
+
+    const account = resolveWecomAccount({ cfg: agentCfg });
+    expect(account.agent?.apiConfigured).toBe(true);
+    expect(account.agent?.corpSecret).toBe("agent-secret");
   });
 });

@@ -67,12 +67,17 @@ const botSchema = z
 const agentSchema = z
   .object({
     corpId: z.string(),
-    corpSecret: z.string(),
+    agentSecret: z.string().optional(),
+    corpSecret: z.string().optional(),
     agentId: z.union([z.number(), z.string()]).optional(),
     token: z.string(),
     encodingAESKey: z.string(),
     welcomeText: z.string().optional(),
     dm: dmSchema,
+  })
+  .refine((value) => Boolean(value.agentSecret?.trim() || value.corpSecret?.trim()), {
+    path: ["agentSecret"],
+    message: "agentSecret 不能为空",
   })
   .optional();
 

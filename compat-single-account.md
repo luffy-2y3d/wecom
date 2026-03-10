@@ -31,7 +31,7 @@ openclaw config set channels.wecom.bot.dm.allowFrom '["*"]'
 
 ```bash
 openclaw config set channels.wecom.agent.corpId "YOUR_CORP_ID"
-openclaw config set channels.wecom.agent.corpSecret "YOUR_CORP_SECRET"
+openclaw config set channels.wecom.agent.agentSecret "YOUR_AGENT_SECRET"
 openclaw config set channels.wecom.agent.agentId 1000001
 openclaw config set channels.wecom.agent.token "YOUR_CALLBACK_TOKEN"
 openclaw config set channels.wecom.agent.encodingAESKey "YOUR_CALLBACK_AES_KEY"
@@ -71,7 +71,7 @@ openclaw channels status
 
       "agent": {
         "corpId": "YOUR_CORP_ID",
-        "corpSecret": "YOUR_CORP_SECRET",
+        "agentSecret": "YOUR_AGENT_SECRET",
         "agentId": 1000001,
         "token": "YOUR_CALLBACK_TOKEN",
         "encodingAESKey": "YOUR_CALLBACK_AES_KEY",

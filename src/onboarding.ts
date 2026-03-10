@@ -250,26 +250,26 @@ async function resolveOnboardingAccountId(params: {
     if (!override && params.shouldPromptAccountIds) {
         const existingIds = listWecomAccountIds(params.cfg);
         const choice = await params.prompter.select({
-            message: "请选择企业微信账号:",
+            message: "请选择企业微信接入标识（英文）:",
             options: [
                 ...existingIds.map((id) => ({
                     value: id,
-                    label: id === DEFAULT_ACCOUNT_ID ? "default（主账号）" : id,
+                    label: id === DEFAULT_ACCOUNT_ID ? "default（默认标识）" : id,
                 })),
-                { value: "__new__", label: "新增账号" },
+                { value: "__new__", label: "新增接入标识" },
             ],
             initialValue: accountId,
         });
         if (choice === "__new__") {
             const entered = await params.prompter.text({
-                message: "请输入新的企业微信账号 ID:",
-                validate: (value: string | undefined) => (value?.trim() ? undefined : "账号 ID 不能为空"),
+                message: "请输入新的企业微信接入标识（英文）:",
+                validate: (value: string | undefined) => (value?.trim() ? undefined : "接入标识不能为空"),
             });
             const normalized = normalizeAccountId(String(entered));
             if (String(entered).trim() !== normalized) {
                 await params.prompter.note(
-                    `账号 ID 已规范化为：${normalized}`,
-                    "企业微信账号",
+                    `接入标识已规范化为：${normalized}`,
+                    "企业微信接入标识",
                 );
             }
             accountId = normalized;
@@ -325,7 +325,7 @@ async function promptMode(prompter: WizardPrompter): Promise<WecomMode> {
                 hint: "Bot 默认 WS 易上手，Agent 负责应用回调、主动推送和媒体发送",
             },
         ],
-        initialValue: "both",
+        initialValue: "bot",
     });
     return choice as WecomMode;
 }
@@ -433,10 +433,10 @@ async function configureAgentMode(
     ).trim();
     const agentId = Number(agentIdStr);
 
-    const corpSecret = String(
+    const agentSecret = String(
         await prompter.text({
-            message: "请输入 Secret (应用密钥):",
-            validate: (value: string | undefined) => (value?.trim() ? undefined : "Secret 不能为空"),
+            message: "请输入应用 Secret:",
+            validate: (value: string | undefined) => (value?.trim() ? undefined : "应用 Secret 不能为空"),
         }),
     ).trim();
 
@@ -478,7 +478,7 @@ async function configureAgentMode(
 
     const agentConfig: WecomAgentConfig = {
         corpId,
-        corpSecret,
+        agentSecret,
         agentId,
         token,
         encodingAESKey,
@@ -506,7 +506,7 @@ async function promptDmPolicy(
             { value: "open", label: "开放模式", hint: "任何人可发起" },
             { value: "disabled", label: "禁用私聊", hint: "不接受私聊消息" },
         ],
-        initialValue: "pairing",
+        initialValue: "open",
     });
 
     const policy = policyChoice as "pairing" | "allowlist" | "open" | "disabled";
@@ -560,7 +560,7 @@ async function showSummary(cfg: OpenClawConfig, prompter: WizardPrompter, accoun
         lines.push("   出站能力: Agent API（主动发送 / 补送 / 媒体）");
     }
 
-    lines.push(`   账号 ID: ${accountId}`);
+    lines.push(`   接入标识: ${accountId}`);
     lines.push("   运维检查: openclaw channels status --deep");
     lines.push("   关键日志: [wecom-runtime] [wecom-ws] [wecom-http] [wecom-agent-delivery]");
 

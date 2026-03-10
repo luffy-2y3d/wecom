@@ -91,7 +91,6 @@ export function mapBotWsFrameToInboundEvent(params: {
       transport: "bot-ws",
       accountId: account.accountId,
       reqId: frame.headers.req_id,
-      passiveWindowMs: 5_000,
       raw: {
         transport: "bot-ws",
         command: frame.cmd,

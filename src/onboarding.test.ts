@@ -168,7 +168,7 @@ describe("wecom onboarding", () => {
   it("uses plugin-owned chinese account selection and no generic dm adapter", async () => {
     const prompter = createPrompter({
       select: vi.fn(async ({ message }: { message: string }) => {
-        if (message === "请选择企业微信账号:") {
+        if (message === "请选择企业微信接入标识（英文）:") {
           return "__new__";
         }
         if (message === "请选择您要配置的接入模式:") {
@@ -180,7 +180,7 @@ describe("wecom onboarding", () => {
         throw new Error(`Unexpected select prompt: ${message}`);
       }) as WizardPrompter["select"],
       text: vi.fn(async ({ message }: { message: string }) => {
-        if (message === "请输入新的企业微信账号 ID:") {
+        if (message === "请输入新的企业微信接入标识（英文）:") {
           return "HaiDao";
         }
         if (message === "请输入 BotId（机器人 ID）:") {
@@ -213,7 +213,56 @@ describe("wecom onboarding", () => {
     const noteText = (prompter.note as ReturnType<typeof vi.fn>).mock.calls
       .map(([message]) => String(message))
       .join("\n");
-    expect(noteText).toContain("账号 ID 已规范化为：haidao");
+    expect(noteText).toContain("接入标识已规范化为：haidao");
     expect(wecomOnboardingAdapter.dmPolicy).toBeUndefined();
+  });
+
+  it("writes agentSecret for fresh agent onboarding", async () => {
+    const prompter = createPrompter({
+      select: vi.fn(async ({ message }: { message: string }) => {
+        if (message === "请选择您要配置的接入模式:") {
+          return "agent";
+        }
+        if (message === "请选择私聊 (DM) 访问策略:") {
+          return "open";
+        }
+        throw new Error(`Unexpected select prompt: ${message}`);
+      }) as WizardPrompter["select"],
+      text: vi.fn(async ({ message }: { message: string }) => {
+        if (message === "请输入 CorpID (企业ID):") {
+          return "corp-id";
+        }
+        if (message === "请输入 AgentID (应用ID):") {
+          return "1000001";
+        }
+        if (message === "请输入应用 Secret:") {
+          return "agent-secret";
+        }
+        if (message === "请输入 Token (回调令牌):") {
+          return "callback-token";
+        }
+        if (message === "请输入 EncodingAESKey (回调加密密钥):") {
+          return "1234567890123456789012345678901234567890123";
+        }
+        if (message === "欢迎语 (可选):") {
+          return "欢迎使用智能助手";
+        }
+        throw new Error(`Unexpected text prompt: ${message}`);
+      }) as WizardPrompter["text"],
+    });
+
+    const result = await wecomOnboardingAdapter.configure({
+      cfg: {} as OpenClawConfig,
+      runtime: createRuntime(),
+      prompter,
+      options: {},
+      accountOverrides: {},
+      shouldPromptAccountIds: false,
+      forceAllowFrom: false,
+    });
+
+    const agent = result.cfg.channels?.wecom?.accounts?.default?.agent;
+    expect(agent?.agentSecret).toBe("agent-secret");
+    expect(agent?.corpSecret).toBeUndefined();
   });
 });

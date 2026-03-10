@@ -16,7 +16,7 @@ describe("wecomOutbound", () => {
         text: "caption",
         mediaUrl: "https://example.com/media.png",
       } as any),
-    ).rejects.toThrow(/account "default" not found/i);
+    ).rejects.toThrow(/requires Agent mode for account=default/i);
   });
 
   it("throws explicit error when outbound accountId does not exist", async () => {

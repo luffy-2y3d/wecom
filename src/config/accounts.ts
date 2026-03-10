@@ -73,14 +73,15 @@ function resolveAgentAccount(
 ): ResolvedAgentAccount {
   const agentId = toNumber(config.agentId);
   const callbackConfigured = Boolean(config.token && config.encodingAESKey);
-  const apiConfigured = Boolean(config.corpId && config.corpSecret && agentId);
+  const normalizedAgentSecret = config.agentSecret?.trim() || config.corpSecret?.trim() || "";
+  const apiConfigured = Boolean(config.corpId && normalizedAgentSecret && agentId);
   return {
     accountId,
     configured: callbackConfigured || apiConfigured,
     callbackConfigured,
     apiConfigured,
     corpId: config.corpId,
-    corpSecret: config.corpSecret,
+    corpSecret: normalizedAgentSecret,
     agentId,
     token: config.token,
     encodingAESKey: config.encodingAESKey,
@@ -110,6 +111,15 @@ function toResolvedAccount(params: {
     config: params.config,
     bot,
     agent,
+  };
+}
+
+function createMissingResolvedAccount(accountId: string): ResolvedWecomAccount {
+  return {
+    accountId,
+    enabled: false,
+    configured: false,
+    config: {},
   };
 }
 
@@ -260,12 +270,24 @@ export function resolveWecomAccount(params: {
   accountId?: string | null;
 }): ResolvedWecomAccount {
   const resolved = resolveWecomAccounts(params.cfg);
-  const accountId = params.accountId?.trim() || resolved.defaultAccountId;
-  const account = resolved.accounts[accountId];
-  if (!account) {
-    throw new Error(`WeCom account "${accountId}" not found.`);
+  const explicitAccountId = params.accountId?.trim();
+  const accountId = explicitAccountId || resolved.defaultAccountId;
+  const direct = resolved.accounts[accountId];
+  if (direct) {
+    return direct;
   }
-  return account;
+
+  // Treat the literal "default" as an alias for the configured default account.
+  // This keeps generic onboarding flows working even when the first WeCom account
+  // was created under a custom id like "haidao" instead of a literal "default".
+  if (explicitAccountId === DEFAULT_ACCOUNT_ID) {
+    const fallback = resolved.accounts[resolved.defaultAccountId];
+    if (fallback) {
+      return fallback;
+    }
+  }
+
+  return createMissingResolvedAccount(accountId);
 }
 
 export function isWecomEnabled(cfg: OpenClawConfig): boolean {
