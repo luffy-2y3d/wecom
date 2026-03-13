@@ -486,6 +486,14 @@ export const wecomDocToolSchema = {
                     ...docMemberEntryArrayProperty,
                     description: "可选：创建后立即授予协作者权限的成员列表",
                 },
+                init_content: {
+                    type: "array",
+                    description: "可选：初始文档内容（段落列表）。插件会自动处理段落分隔，确保标题和正文分离。",
+                    items: {
+                        type: "string",
+                        description: "段落内容",
+                    },
+                },
             },
         },
         {

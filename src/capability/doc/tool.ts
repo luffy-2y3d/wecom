@@ -4,6 +4,8 @@ import { WecomDocClient } from "./client.js";
 import type { ResolvedAgentAccount } from "../../types/index.js";
 import { resolveAgentAccountOrUndefined } from "../bot/fallback-delivery.js";
 
+import { UpdateRequest } from "./types.js";
+
 function readString(value: unknown): string {
     const trimmed = String(value ?? "").trim();
     return trimmed || "";
@@ -352,6 +354,104 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                             fatherId: params.fatherId,
                             adminUsers: params.adminUsers,
                         });
+
+                        // Handle initial content (title/body separation) if provided
+                        let contentResult: any = null;
+                        if (Array.isArray(params.init_content) && params.init_content.length > 0) {
+                            try {
+                                // 1. Get initial content to find paragraph boundaries
+                                const initContent = await docClient.getDocContent({
+                                    agent: account,
+                                    docId: result.docId,
+                                });
+                                
+                                // We assume a new doc has 1 empty paragraph.
+                                // We will insert content sequentially.
+                                // Note: WeCom API indices shift after insertion.
+                                // Strategy:
+                                // - Insert Para 1 (Title) at 0.
+                                // - Insert Paragraph Break (creates new para).
+                                // - Insert Para 2 (Content) at new index.
+                                // To be safe and follow "Correct Flow", we will do it in a loop or calculate carefully.
+                                // Since batch_update is atomic, indices are relative to start of batch? NO, usually sequential in batch.
+                                // But user says "Must call get_content".
+                                // So we will do it step-by-step for safety as per user instruction.
+                                
+                                let currentContent = initContent;
+                                let requests: UpdateRequest[] = [];
+                                
+                                // If we have content, we treat the first item as "Title" (or first paragraph)
+                                // The doc starts with one empty paragraph.
+                                
+                                // Step 1: Insert first paragraph text at index 0
+                                if (params.init_content[0]) {
+                                    await docClient.updateDocContent({
+                                        agent: account,
+                                        docId: result.docId,
+                                        requests: [{
+                                            insert_text: {
+                                                text: String(params.init_content[0]),
+                                                location: { index: 0 }
+                                            }
+                                        }]
+                                    });
+                                }
+
+                                // Step 2: For subsequent paragraphs, we need to append.
+                                for (let i = 1; i < params.init_content.length; i++) {
+                                    const text = String(params.init_content[i]);
+                                    if (!text) continue;
+
+                                    // Refresh content to get latest end position
+                                    currentContent = await docClient.getDocContent({
+                                        agent: account,
+                                        docId: result.docId,
+                                    });
+                                    
+                                    // Find the end of the document (or last paragraph)
+                                    // The 'document' node end is usually the total length.
+                                    // We want to insert a new paragraph at the end.
+                                    const docEndIndex = currentContent.document.end - 1; // -1 to be inside the last char? Or just 'end'?
+                                    // Usually 'end' is exclusive. content length is end - begin.
+                                    // If doc is "Title", end is 5. We want to insert at 5.
+                                    
+                                    // We use insert_paragraph to create a split
+                                    await docClient.updateDocContent({
+                                        agent: account,
+                                        docId: result.docId,
+                                        requests: [{
+                                            insert_paragraph: {
+                                                location: { index: docEndIndex }
+                                            }
+                                        }]
+                                    });
+                                    
+                                    // Now insert text into the new paragraph
+                                    // We need to refresh again or assume index shifted by 1
+                                    currentContent = await docClient.getDocContent({
+                                        agent: account,
+                                        docId: result.docId,
+                                    });
+                                    
+                                    const newParaIndex = currentContent.document.end - 1; 
+                                    
+                                    await docClient.updateDocContent({
+                                        agent: account,
+                                        docId: result.docId,
+                                        requests: [{
+                                            insert_text: {
+                                                text: text,
+                                                location: { index: newParaIndex }
+                                            }
+                                        }]
+                                    });
+                                }
+                                contentResult = "init_content_populated";
+                            } catch (err) {
+                                contentResult = `content_failed: ${err instanceof Error ? err.message : String(err)}`;
+                            }
+                        }
+
                         let accessResult: any = null;
                         if ((Array.isArray(params.viewers) && params.viewers.length > 0) || collaborators.length > 0) {
                             try {
@@ -389,8 +489,8 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                             title: readString(params.docName),
                             url: result.url || undefined,
                             summary: accessResult
-                                ? `已创建${mapDocTypeLabel(result.docType)}“${readString(params.docName)}”（docId: ${result.docId}）；${summarizeDocAccess(accessResult)}`
-                                : `已创建${mapDocTypeLabel(result.docType)}“${readString(params.docName)}”（docId: ${result.docId}）`,
+                                ? `已创建${mapDocTypeLabel(result.docType)}“${readString(params.docName)}”（docId: ${result.docId}）；${summarizeDocAccess(accessResult)}` + (contentResult ? `；内容填充: ${contentResult}` : "")
+                                : `已创建${mapDocTypeLabel(result.docType)}“${readString(params.docName)}”（docId: ${result.docId}）` + (contentResult ? `；内容填充: ${contentResult}` : ""),
                             usageHint: buildDocIdUsageHint(result.docId) || undefined,
                             raw: accessResult ? { create: result.raw, access: accessResult.raw } : result.raw,
                         });
