@@ -142,9 +142,8 @@ export class WecomDocClient {
         spaceId?: string; 
         fatherId?: string; 
         adminUsers?: string[];
-        init_content?: string[];
     }) {
-        const { agent, docName, docType, spaceId, fatherId, adminUsers, init_content } = params;
+        const { agent, docName, docType, spaceId, fatherId, adminUsers } = params;
         const normalizedDocType = normalizeDocType(docType);
         const payload: Record<string, unknown> = {
             doc_type: normalizedDocType,
@@ -161,31 +160,6 @@ export class WecomDocClient {
             agent,
             body: payload,
         });
-
-        // 如果有 init_content，批量插入内容
-        if (init_content?.length && json.docid) {
-            const docId = readString(json.docid);
-            const requests: UpdateRequest[] = [];
-            let index = 0;
-            
-            for (const line of init_content) {
-                if (line.trim() === "") {
-                    requests.push({ insert_paragraph: { location: { index } } });
-                } else {
-                    requests.push({ insert_text: { location: { index }, text: line } });
-                }
-                index++;
-            }
-            
-            if (requests.length > 0) {
-                await this.updateDocContent({
-                    agent,
-                    docId,
-                    requests,
-                    batchMode: true
-                });
-            }
-        }
 
         return {
             raw: json,
@@ -438,15 +412,30 @@ export class WecomDocClient {
         };
     }
 
-    async uploadDocImage(params: { agent: ResolvedAgentAccount; docId: string; filePath: string }) {
-        const { agent, docId, filePath } = params;
+    async uploadDocImage(params: { 
+        agent: ResolvedAgentAccount; 
+        docId: string; 
+        filePath?: string;
+        base64_content?: string;
+    }) {
+        const { agent, docId, filePath, base64_content } = params;
         const fs = await import("node:fs");
         
         const normalizedDocId = readString(docId);
         if (!normalizedDocId) throw new Error("docId required");
         
-        const fileData = await fs.promises.readFile(filePath);
-        const fileName = filePath.split('/').pop() || 'image.png';
+        // Support both file path and base64 content
+        let fileData: Buffer;
+        let fileName = 'image.png';
+        
+        if (base64_content) {
+            fileData = Buffer.from(base64_content, 'base64');
+        } else if (filePath) {
+            fileData = await fs.promises.readFile(filePath);
+            fileName = filePath.split('/').pop() || 'image.png';
+        } else {
+            throw new Error("Either filePath or base64_content must be provided");
+        }
         
         const token = await getAccessToken(agent);
         const url = `https://qyapi.weixin.qq.com/cgi-bin/wedoc/upload_doc_image?access_token=${encodeURIComponent(token)}`;
