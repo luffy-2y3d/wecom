@@ -394,121 +394,142 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                         }
 
                         // Handle initial content (title/body separation) if provided
+                        // Supports: string (text) or {type: "text"|"image", content/url: string}
                         let contentResult: any = null;
                         if (Array.isArray(params.init_content) && params.init_content.length > 0) {
                             try {
-                                // 1. Get initial content to find paragraph boundaries
-                                const initContent = await docClient.getDocContent({
-                                    agent: account,
-                                    docId: result.docId,
-                                });
-                                
-                                // We assume a new doc has 1 empty paragraph.
-                                // We will insert content sequentially.
-                                // Note: WeCom API indices shift after insertion.
-                                // Strategy:
-                                // - Insert Para 1 (Title) at 0.
-                                // - Insert Paragraph Break (creates new para).
-                                // - Insert Para 2 (Content) at new index.
-                                // To be safe and follow "Correct Flow", we will do it in a loop or calculate carefully.
-                                // Since batch_update is atomic, indices are relative to start of batch? NO, usually sequential in batch.
-                                // But user says "Must call get_content".
-                                // So we will do it step-by-step for safety as per user instruction.
-                                
-                                let currentContent = initContent;
-                                let requests: UpdateRequest[] = [];
-                                
-                                // If we have content, we treat the first item as "Title" (or first paragraph)
-                                // The doc starts with one empty paragraph.
-                                
-                                // Step 1: Insert first paragraph text at index 0
-                                if (params.init_content[0]) {
-                                    const titleText = String(params.init_content[0]);
-                                    await docClient.updateDocContent({
-                                        agent: account,
-                                        docId: result.docId,
-                                        requests: [{
-                                            insert_text: {
-                                                text: titleText,
-                                                location: { index: 0 }
-                                            }
-                                        }]
-                                    });
+                                // Helper: check if content item is an image
+                                const isImageItem = (item: any): boolean => {
+                                    if (typeof item === "object" && item !== null) {
+                                        return item.type === "image" || (item.url && !item.content);
+                                    }
+                                    if (typeof item === "string") {
+                                        // Detect image URLs
+                                        return item.startsWith("http") && 
+                                            (item.includes(".png") || item.includes(".jpg") || 
+                                             item.includes(".jpeg") || item.includes(".gif") ||
+                                             item.includes("qpic.cn") || item.includes("weixin.qq.com"));
+                                    }
+                                    return false;
+                                };
 
-                                    // Apply Title Styling (Bold)
-                                    // We assume the title is at the start (0) and has the length of the text.
-                                    if (titleText.length > 0) {
+                                // Helper: get image URL from content item
+                                const getImageUrl = (item: any): string => {
+                                    if (typeof item === "object" && item !== null) {
+                                        return item.url || item.content || "";
+                                    }
+                                    return String(item);
+                                };
+
+                                // Helper: get text from content item
+                                const getText = (item: any): string => {
+                                    if (typeof item === "object" && item !== null) {
+                                        return item.content || item.text || "";
+                                    }
+                                    return String(item);
+                                };
+
+                                // Step 1: Insert first paragraph (title) at index 0
+                                if (params.init_content[0]) {
+                                    const firstItem = params.init_content[0];
+                                    if (isImageItem(firstItem)) {
+                                        // First item is image - insert at index 0 directly
+                                        const imgUrl = getImageUrl(firstItem);
                                         await docClient.updateDocContent({
                                             agent: account,
                                             docId: result.docId,
                                             requests: [{
-                                                update_text_property: {
-                                                    text_property: { bold: true },
-                                                    ranges: [{ start_index: 0, length: titleText.length }]
+                                                insert_image: {
+                                                    image_id: imgUrl,
+                                                    location: { index: 0 }
                                                 }
                                             }]
                                         });
+                                    } else {
+                                        const titleText = getText(firstItem);
+                                        await docClient.updateDocContent({
+                                            agent: account,
+                                            docId: result.docId,
+                                            requests: [{
+                                                insert_text: {
+                                                    text: titleText,
+                                                    location: { index: 0 }
+                                                }
+                                            }]
+                                        });
+
+                                        // Apply Title Styling (Bold)
+                                        if (titleText.length > 0) {
+                                            await docClient.updateDocContent({
+                                                agent: account,
+                                                docId: result.docId,
+                                                requests: [{
+                                                    update_text_property: {
+                                                        text_property: { bold: true },
+                                                        ranges: [{ start_index: 0, length: titleText.length }]
+                                                    }
+                                                }]
+                                            });
+                                        }
                                     }
                                 }
 
-                                // Step 2: For subsequent paragraphs, we need to append.
+                                // Step 2: For subsequent items, append with proper paragraph handling
                                 for (let i = 1; i < params.init_content.length; i++) {
-                                    const text = String(params.init_content[i]);
-                                    if (!text) continue;
+                                    const item = params.init_content[i];
+                                    
+                                    // Refresh content to get latest document structure
+                                    const currentContent = await docClient.getDocContent({
+                                        agent: account,
+                                        docId: result.docId,
+                                    });
+                                    
+                                    // Get the end index of the document
+                                    const docEndIndex = currentContent.document.end;
+                                    
+                                    if (isImageItem(item)) {
+                                        // Insert image: first create a new paragraph, then insert image at paragraph start
+                                        // Image must be inserted inside a paragraph, not at document level
+                                        await docClient.updateDocContent({
+                                            agent: account,
+                                            docId: result.docId,
+                                            requests: [
+                                                {
+                                                    insert_paragraph: {
+                                                        location: { index: docEndIndex }
+                                                    }
+                                                },
+                                                {
+                                                    insert_image: {
+                                                        image_id: getImageUrl(item),
+                                                        location: { index: docEndIndex }
+                                                    }
+                                                }
+                                            ]
+                                        });
+                                    } else {
+                                        const text = getText(item);
+                                        if (!text) continue;
 
-                                    // Refresh content to get latest end position
-                                    currentContent = await docClient.getDocContent({
-                                        agent: account,
-                                        docId: result.docId,
-                                    });
-                                    
-                                    // Find the end of the document (or last paragraph)
-                                    // We use 'end' directly as the insertion point for appending.
-                                    // Note: WeCom 'end' is exclusive [begin, end).
-                                    // If we insert at 'end', we append after the last element.
-                                    let docEndIndex = currentContent.document.end;
-                                    
-                                    // Safety adjustment: If the document has a final mandatory newline/EOF that we can't append after,
-                                    // we might need to insert *before* it.
-                                    // However, creating a NEW paragraph usually happens at the end.
-                                    // If we are unsure, we try 'end - 1' if 'end' fails, but 'end' is the standard "append" index.
-                                    // Given the user analysis "Paragraph 2 (5-117)" where 5 was the end of Para 1, 
-                                    // it suggests we insert AT the boundary.
-                                    
-                                    // We use insert_paragraph to create a split
-                                    await docClient.updateDocContent({
-                                        agent: account,
-                                        docId: result.docId,
-                                        requests: [{
-                                            insert_paragraph: {
-                                                location: { index: docEndIndex }
-                                            }
-                                        }]
-                                    });
-                                    
-                                    // Now insert text into the new paragraph
-                                    // We need to refresh again or assume index shifted by 1
-                                    currentContent = await docClient.getDocContent({
-                                        agent: account,
-                                        docId: result.docId,
-                                    });
-                                    
-                                    // The new paragraph should be at the end.
-                                    // We want to insert text *into* this new paragraph.
-                                    // The insert_paragraph likely created a new Paragraph node.
-                                    // We insert at the new end (which is inside the new paragraph).
-                                    const newParaIndex = currentContent.document.end; 
-                                    
-                                    await docClient.updateDocContent({
-                                        agent: account,
-                                        docId: result.docId,
-                                        requests: [{
-                                            insert_text: {
-                                                text: text,
-                                                location: { index: newParaIndex }
-                                            }
-                                        }]
-                                    });
+                                        // Insert text: create paragraph then insert text
+                                        await docClient.updateDocContent({
+                                            agent: account,
+                                            docId: result.docId,
+                                            requests: [
+                                                {
+                                                    insert_paragraph: {
+                                                        location: { index: docEndIndex }
+                                                    }
+                                                },
+                                                {
+                                                    insert_text: {
+                                                        text: text,
+                                                        location: { index: docEndIndex }
+                                                    }
+                                                }
+                                            ]
+                                        });
+                                    }
                                 }
                                 contentResult = "init_content_populated";
                             } catch (err) {
