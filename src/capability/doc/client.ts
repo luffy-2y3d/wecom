@@ -631,15 +631,146 @@ export class WecomDocClient {
         return json;
     }
 
-    async editSheetData(params: { agent: ResolvedAgentAccount; docId: string; request: any }) {
-        const { agent, docId, request } = params;
-        const body = { docid: readString(docId), ...readObject(request) };
+    async editSheetData(params: { 
+        agent: ResolvedAgentAccount; 
+        docId: string; 
+        sheetId: string;
+        startRow?: number;
+        startColumn?: number;
+        gridData?: any;
+    }) {
+        const { agent, docId, sheetId, startRow = 0, startColumn = 0, gridData } = params;
+        
+        // Build GridData with proper structure per WeCom API
+        const gridDataObj = gridData && typeof gridData === "object" ? gridData : {};
+        
+        // Ensure rows have proper CellData structure: [{values: [{cell_value, cell_format}]}]
+        // Per official API: CellData = {cell_value: CellValue, cell_format?: CellFormat}
+        // CellValue = {text: string} or {link: {text, url}}
+        // CellFormat = {text_format: TextFormat}
+        // TextFormat = {font, font_size, bold, italic, strikethrough, underline, color}
+        // Color = {red, green, blue, alpha}
+        const rows = Array.isArray(gridDataObj.rows) ? gridDataObj.rows.map((row: any) => {
+            if (!row || typeof row !== "object") return { values: [] };
+            const values = Array.isArray(row.values) ? row.values.map((cell: any) => {
+                let cellValue: any;
+                let cellFormat: any;
+                
+                // Handle string cells
+                if (typeof cell === "string") {
+                    cellValue = { text: cell };
+                }
+                // Handle null/undefined
+                else if (!cell || typeof cell !== "object") {
+                    cellValue = { text: String(cell ?? "") };
+                }
+                else {
+                    // Handle cell with link (official API format)
+                    if (cell.link && typeof cell.link === "object") {
+                        cellValue = {
+                            link: {
+                                text: String(cell.link.text ?? cell.text ?? ""),
+                                url: String(cell.link.url ?? cell.url ?? "")
+                            }
+                        };
+                    }
+                    // Handle cell with text only (official API format)
+                    else if (cell.text != null) {
+                        cellValue = { text: String(cell.text) };
+                    }
+                    // Fallback
+                    else {
+                        cellValue = { text: String(cell ?? "") };
+                    }
+                    
+                    // Handle cell_format if provided
+                    if (cell.cell_format && typeof cell.cell_format === "object") {
+                        cellFormat = this.buildCellFormat(cell.cell_format);
+                    }
+                    // Handle inline format properties
+                    else if (cell.bold !== undefined || cell.font_size !== undefined || cell.color !== undefined) {
+                        cellFormat = this.buildCellFormat(cell);
+                    }
+                }
+                
+                // Return CellData format per official API
+                const cellData: any = { cell_value: cellValue };
+                if (cellFormat) {
+                    cellData.cell_format = cellFormat;
+                }
+                return cellData;
+            }) : [];
+            return { values };
+        }) : [];
+        
+        const finalGridData = {
+            start_row: gridDataObj.startRow ?? startRow,
+            start_column: gridDataObj.startColumn ?? startColumn,
+            rows
+        };
+        
+        // Build batch_update request per official API
+        const body = {
+            docid: readString(docId),
+            requests: [{
+                update_range_request: {
+                    sheet_id: readString(sheetId),
+                    grid_data: finalGridData
+                }
+            }]
+        };
+        
         const json = await this.postWecomDocApi({
-            path: "/cgi-bin/wedoc/spreadsheet/edit_data",
-            actionLabel: "edit_data",
+            path: "/cgi-bin/wedoc/spreadsheet/batch_update",
+            actionLabel: "spreadsheet_batch_update",
             agent, body,
         });
         return { raw: json, docId: body.docid as string };
+    }
+    
+    /**
+     * Build CellFormat object per official API
+     */
+    private buildCellFormat(formatData: any): any {
+        const textFormat: any = {};
+        
+        // Font properties
+        if (formatData.font != null) {
+            textFormat.font = String(formatData.font);
+        }
+        if (formatData.font_size != null) {
+            textFormat.font_size = Math.min(72, Math.max(1, Number(formatData.font_size)));
+        }
+        if (formatData.bold != null) {
+            textFormat.bold = Boolean(formatData.bold);
+        }
+        if (formatData.italic != null) {
+            textFormat.italic = Boolean(formatData.italic);
+        }
+        if (formatData.strikethrough != null) {
+            textFormat.strikethrough = Boolean(formatData.strikethrough);
+        }
+        if (formatData.underline != null) {
+            textFormat.underline = Boolean(formatData.underline);
+        }
+        
+        // Color (RGBA)
+        if (formatData.color != null && typeof formatData.color === "object") {
+            const color = formatData.color;
+            textFormat.color = {
+                red: Math.min(255, Math.max(0, Number(color.red ?? 0))),
+                green: Math.min(255, Math.max(0, Number(color.green ?? 0))),
+                blue: Math.min(255, Math.max(0, Number(color.blue ?? 0))),
+                alpha: Math.min(255, Math.max(0, Number(color.alpha ?? 255)))
+            };
+        }
+        
+        // Return empty object if no format properties
+        if (Object.keys(textFormat).length === 0) {
+            return null;
+        }
+        
+        return { text_format: textFormat };
     }
 
     async getSheetData(params: { agent: ResolvedAgentAccount; docId: string; sheetId: string; range: string }) {
