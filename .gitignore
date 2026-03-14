@@ -108,10 +108,12 @@ src/dynamic-agent.test.ts
 
 # 监控脚本和调试文件不提交
 monitor-pr34.cjs
+fix-pr34-issues.js
 admin_notification.txt
 issue_comments.json
 issues_to_fix.json
 review_comments.json
 pr34-monitor.log
+pr34-fix.log
 .openclaw
 package-lock.json
