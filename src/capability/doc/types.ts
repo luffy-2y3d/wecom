@@ -406,3 +406,271 @@ export interface GetDocContentResponse {
     version: number;
     document: Node;
 }
+
+// --- Collect Form (收集表) Types ---
+
+export interface FormQuestionOption {
+    key: number;           // 必填，选项 key 从 1 开始
+    value: string;         // 必填，选项内容
+    status?: number;       // 1 正常，2 删除
+}
+
+export interface FormQuestion {
+    question_id: number;                           // 必填，问题 ID 从 1 开始（家校从 2 开始）
+    title: string;                                 // 必填，问题标题
+    pos: number;                                   // 必填，问题序号从 1 开始
+    status?: number;                               // 1 正常，2 删除
+    reply_type: number;                            // 必填，问题类型（1-22）
+    must_reply: boolean;                           // 必填，是否必答
+    note?: string;                                 // 可选，备注
+    placeholder?: string;                          // 可选，输入提示
+    question_extend_setting?: FormQuestionExtendSetting;  // 可选，题型扩展设置
+    option_item?: FormQuestionOption[];            // 单选/多选/下拉列表必填
+}
+
+export interface FormQuestionExtendSetting {
+    // 文本（reply_type=1）
+    text_setting?: {
+        validation_type?: number;      // 0 字符个数，1 数字，2 邮箱，3 网址，4 身份证，5 手机号，6 固定电话
+        validation_detail?: number;    // 根据 validation_type 选择
+        char_len?: number;             // 字符长度 ≤4000
+        number_min?: number;           // 数字最小值
+        number_max?: number;           // 数字最大值
+    };
+    // 单选（reply_type=2）
+    radio_setting?: {
+        add_other_option?: boolean;    // 是否增加"其他"选项
+    };
+    // 多选（reply_type=3）
+    checkbox_setting?: {
+        add_other_option?: boolean;    // 是否增加"其他"选项
+        type?: number;                 // 0 不限制，1 至少，2 最多，3 固定
+        number?: number;               // 当 type=1/2/3 时必填
+    };
+    // 位置（reply_type=5）
+    location_setting?: {
+        location_type?: number;        // 0 省市区街道 + 详细，1 省/市，2 省/市/区，3 省/市/区/街道，4 自动定位
+        distance_type?: number;        // 0 当前，1 附近 100 米，2 附近 200 米，3 附近 300 米
+    };
+    // 图片（reply_type=9）
+    image_setting?: {
+        camera_only?: boolean;         // 是否仅限手机拍照
+        upload_image_limit?: {
+            count_limit_type?: number; // 0 等于，1 小于等于
+            count?: number;            // 1~9
+            max_size?: number;         // MB，最大 3000
+        };
+    };
+    // 文件（reply_type=10）
+    file_setting?: {
+        upload_file_limit?: {
+            count_limit_type?: number;
+            count?: number;
+            max_size?: number;
+        };
+    };
+    // 日期（reply_type=11）
+    date_setting?: {
+        date_format_type?: number;     // 0 年月日时分，1 年月日，2 年月
+    };
+    // 时间（reply_type=14）
+    time_setting?: {
+        time_format_type?: number;     // 0 时分，1 时分秒
+    };
+    // 体温（reply_type=16）
+    temperature_setting?: {
+        unit_type?: number;            // 0 摄氏度，1 华氏度
+    };
+    // 部门（reply_type=18）
+    department_setting?: {
+        allow_multiple_selection?: boolean;  // 是否允许多选
+    };
+    // 成员（reply_type=19）
+    member_setting?: {
+        allow_multiple_selection?: boolean;  // 是否允许多选
+    };
+    // 时长（reply_type=22）
+    duration_setting?: {
+        time_scale?: number;           // 1 按天，2 按小时
+        date_type?: number;            // 1 自然日，2 工作日
+        day_range?: number;            // 1~24，默认 24
+    };
+}
+
+export interface FormSetting {
+    fill_out_auth?: number;                    // 0 所有人，1 指定人/部门，4 家校所有范围
+    fill_in_range?: {                          // 当 fill_out_auth=1 时必填
+        userids?: string[];                    // 成员列表
+        departmentids?: number[];              // 部门列表
+    };
+    setting_manager_range?: {                  // 可选，管理员
+        userids?: string[];
+    };
+    timed_repeat_info?: {                      // 可选，定时重复设置
+        enable?: boolean;                      // 是否开启
+        remind_time?: number;                  // 提醒时间戳（秒）
+        repeat_type?: number;                  // 0 每周，1 每天，2 每月
+        week_flag?: number;                    // 每周几，bit 组合（周一至周日对应 bit0-6）
+        skip_holiday?: boolean;                // 是否跳过节假日（repeat_type=1 有效）
+        day_of_month?: number;                 // 每月第几天（repeat_type=2 有效）
+        fork_finish_type?: number;             // 补填：0 允许，1 仅当天，2 最后五天，3 一个月内，4 下一次生成前
+    };
+    allow_multi_fill?: boolean;                // 是否允许多人提交多份
+    timed_finish?: number;                     // 定时关闭时间戳（秒，与定时重复互斥）
+    can_anonymous?: boolean;                   // 是否支持匿名
+    can_notify_submit?: boolean;               // 是否有回复时提醒
+}
+
+export interface FormInfo {
+    form_title: string;                        // 必填，收集表标题
+    form_desc?: string;                        // 可选，收集表描述
+    form_header?: string;                      // 可选，背景图链接
+    form_question: {                           // 必填，问题列表
+        items: FormQuestion[];                 // 问题数组 ≤200
+    };
+    form_setting?: FormSetting;                // 可选，收集表设置
+}
+
+export interface CreateCollectRequest {
+    spaceid?: string;                          // 可选，空间 ID
+    fatherid?: string;                         // 可选，父目录 fileid
+    form_info: FormInfo;                       // 必填，收集表信息
+}
+
+export interface CreateCollectResponse {
+    errcode: number;
+    errmsg: string;
+    formid: string;
+}
+
+// --- Spreadsheet (在线表格) Types ---
+
+export interface SheetProperties {
+    sheet_id: string;
+    title: string;
+    row_count: number;
+    column_count: number;
+}
+
+export interface GetSheetPropertiesResponse {
+    errcode: number;
+    errmsg: string;
+    properties: SheetProperties[];
+}
+
+export interface GridData {
+    start_row: number;       // 起始行号（从 0 开始）
+    start_column: number;    // 起始列号（从 0 开始）
+    rows: RowData[];         // 行数据列表
+}
+
+export interface RowData {
+    values: CellData[];      // 该行各列单元格数据
+}
+
+export interface CellData {
+    cell_value?: CellValue;    // 单元格数据内容（可选）
+    cell_format?: CellFormat;  // 单元格样式（可选）
+}
+
+export interface CellValue {
+    text?: string;           // 纯文本
+    link?: Link;             // 超链接（与 text 互斥）
+}
+
+export interface Link {
+    url: string;             // 链接地址
+    text: string;            // 链接显示文本
+}
+
+export interface CellFormat {
+    text_format?: TextFormat;  // 文字样式
+}
+
+export interface TextFormat {
+    font?: string;           // 字体名称（如 "Microsoft YaHei"）
+    font_size?: number;      // 字号，最大 72
+    bold?: boolean;
+    italic?: boolean;
+    strikethrough?: boolean;
+    underline?: boolean;
+    color?: Color;           // 文字颜色（RGBA）
+}
+
+export interface Color {
+    red: number;     // 0~255
+    green: number;   // 0~255
+    blue: number;    // 0~255
+    alpha?: number;  // 0~255，默认 255（不透明），可选
+}
+
+export enum Dimension {
+    ROW = "ROW",         // 行
+    COLUMN = "COLUMN"    // 列
+}
+
+// Batch Update Requests
+export interface AddSheetRequest {
+    add_sheet_request: {
+        title: string;
+        row_count?: number;
+        column_count?: number;
+    };
+}
+
+export interface DeleteSheetRequest {
+    delete_sheet_request: {
+        sheet_id: string;
+    };
+}
+
+export interface UpdateRangeRequest {
+    update_range_request: {
+        sheet_id: string;
+        grid_data: GridData;
+    };
+}
+
+export interface DeleteDimensionRequest {
+    delete_dimension_request: {
+        sheet_id: string;
+        dimension: Dimension;
+        start_index: number;    // 从 1 开始
+        end_index: number;      // 从 1 开始，不包含
+    };
+}
+
+export type SpreadsheetUpdateRequest = 
+    | AddSheetRequest
+    | DeleteSheetRequest
+    | UpdateRangeRequest
+    | DeleteDimensionRequest;
+
+export interface SpreadsheetBatchUpdateResponse {
+    errcode: number;
+    errmsg: string;
+    data?: {
+        responses: Array<{
+            add_sheet_response?: {
+                properties: SheetProperties;
+            };
+            delete_sheet_response?: {
+                sheet_id: string;
+            };
+            update_range_response?: {
+                updated_cells: number;
+            };
+            delete_dimension_response?: {
+                deleted: number;
+            };
+        }>;
+    };
+}
+
+export interface GetSheetRangeDataResponse {
+    errcode: number;
+    errmsg: string;
+    data: {
+        result: GridData;
+    };
+}

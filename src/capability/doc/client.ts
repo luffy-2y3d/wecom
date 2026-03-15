@@ -383,11 +383,42 @@ export class WecomDocClient {
         authLevel?: number;
     }) {
         const { agent, docId, viewers, collaborators, removeViewers, removeCollaborators, authLevel } = params;
+        
+        // Auto-detect: if adding collaborators, check if they are already viewers and need to be removed
+        // This prevents the "user is viewer but not collaborator" issue
+        let finalRemoveViewers = removeViewers;
+        if (collaborators && !removeViewers) {
+            // Need to check current auth status
+            try {
+                const currentAuth = await this.getDocAuth({ agent, docId });
+                const viewerUserIds = new Set(
+                    (currentAuth.docMembers || [])
+                        .filter((m: any) => m.type === 1 && m.userid)
+                        .map((m: any) => m.userid)
+                );
+                const newCollaboratorUserIds = normalizeDocMemberEntryList(collaborators)
+                    .map(e => e.userid)
+                    .filter(Boolean) as string[];
+                
+                // Auto-add viewers who are being promoted to collaborators
+                const autoRemoveViewers = newCollaboratorUserIds
+                    .filter(userid => viewerUserIds.has(userid))
+                    .map(userid => ({ userid, type: 1 }));
+                
+                if (autoRemoveViewers.length > 0) {
+                    finalRemoveViewers = autoRemoveViewers;
+                }
+            } catch (err) {
+                // If we can't check auth, proceed without auto-removal
+                // The caller can explicitly pass removeViewers if needed
+            }
+        }
+        
         const payload = buildDocMemberAuthRequest({
             docId,
             viewers,
             collaborators,
-            removeViewers,
+            removeViewers: finalRemoveViewers,
             removeCollaborators,
             authLevel,
         });
@@ -436,16 +467,101 @@ export class WecomDocClient {
 
     async createCollect(params: { agent: ResolvedAgentAccount; formInfo: any; spaceId?: string; fatherId?: string }) {
         const { agent, formInfo, spaceId, fatherId } = params;
-        const payload: Record<string, unknown> = {
-            form_info: readObject(formInfo),
-        };
-        if (Object.keys(payload.form_info as object).length === 0) {
-            throw new Error("formInfo required");
+        
+        // Validate form_info structure per API spec
+        if (!formInfo || typeof formInfo !== 'object') {
+            throw new Error("formInfo 必须是非空对象");
         }
+        
+        // Validate required fields
+        if (!formInfo.form_title || readString(formInfo.form_title).length === 0) {
+            throw new Error("form_title 必填");
+        }
+        
+        if (!formInfo.form_question || !formInfo.form_question.items || !Array.isArray(formInfo.form_question.items)) {
+            throw new Error("form_question.items 必填且必须为数组");
+        }
+        
+        // Validate questions count ≤ 200
+        const questions = formInfo.form_question.items;
+        if (questions.length > 200) {
+            throw new Error("问题数量不能超过 200 个");
+        }
+        
+        // Validate each question
+        questions.forEach((q: any, index: number) => {
+            if (!q.question_id || !Number.isInteger(q.question_id) || q.question_id < 1) {
+                throw new Error(`第${index + 1}个问题：question_id 必填且必须从 1 开始`);
+            }
+            if (!q.title || readString(q.title).length === 0) {
+                throw new Error(`第${index + 1}个问题：title 必填`);
+            }
+            if (!q.pos || !Number.isInteger(q.pos) || q.pos < 1) {
+                throw new Error(`第${index + 1}个问题：pos 必填且必须从 1 开始`);
+            }
+            if (q.reply_type === undefined || !Number.isInteger(q.reply_type)) {
+                throw new Error(`第${index + 1}个问题：reply_type 必填`);
+            }
+            if (q.must_reply === undefined || typeof q.must_reply !== 'boolean') {
+                throw new Error(`第${index + 1}个问题：must_reply 必填且必须为布尔值`);
+            }
+            
+            // Validate option_item for single/multiple/dropdown questions
+            const requiresOptions = [2, 3, 15].includes(q.reply_type); // 单选/多选/下拉列表
+            if (requiresOptions) {
+                if (!Array.isArray(q.option_item) || q.option_item.length === 0) {
+                    throw new Error(`第${index + 1}个问题：单选/多选/下拉列表必须提供 option_item 数组`);
+                }
+                // Validate option keys are sequential from 1
+                q.option_item.forEach((opt: any, optIndex: number) => {
+                    if (!opt.key || !Number.isInteger(opt.key) || opt.key < 1) {
+                        throw new Error(`第${index + 1}个问题的第${optIndex + 1}个选项：key 必填且从 1 开始`);
+                    }
+                    if (!opt.value || readString(opt.value).length === 0) {
+                        throw new Error(`第${index + 1}个问题的第${optIndex + 1}个选项：value 必填`);
+                    }
+                });
+            }
+            
+            // Validate image/file upload limits
+            if ([9, 10].includes(q.reply_type)) { // 图片/文件
+                const setting = q.question_extend_setting;
+                if (setting) {
+                    const limit = setting.image_setting?.upload_image_limit || setting.file_setting?.upload_file_limit;
+                    if (limit) {
+                        if (limit.count !== undefined && (limit.count < 1 || limit.count > 9)) {
+                            throw new Error(`第${index + 1}个问题：图片/文件上传数量限制必须在 1-9 之间`);
+                        }
+                        if (limit.max_size !== undefined && limit.max_size > 3000) {
+                            throw new Error(`第${index + 1}个问题：单个文件大小限制最大 3000MB`);
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Validate timed_repeat_info and timed_finish are mutually exclusive
+        const formSetting = formInfo.form_setting || {};
+        if (formSetting.timed_repeat_info?.enable && formSetting.timed_finish) {
+            console.warn("警告：timed_finish 与 timed_repeat_info 互斥，若都填优先定时重复");
+        }
+        
+        // Build payload
+        const payload: Record<string, unknown> = {
+            form_info: {
+                form_title: readString(formInfo.form_title),
+                form_desc: formInfo.form_desc ? readString(formInfo.form_desc) : undefined,
+                form_header: formInfo.form_header ? readString(formInfo.form_header) : undefined,
+                form_question: formInfo.form_question,
+                form_setting: formSetting,
+            },
+        };
+        
         const normalizedSpaceId = readString(spaceId);
         const normalizedFatherId = readString(fatherId);
         if (normalizedSpaceId) payload.spaceid = normalizedSpaceId;
         if (normalizedFatherId) payload.fatherid = normalizedFatherId;
+        
         const json = await this.postWecomDocApi({
             path: "/cgi-bin/wedoc/create_collect",
             actionLabel: "create_collect",
@@ -461,16 +577,86 @@ export class WecomDocClient {
 
     async modifyCollect(params: { agent: ResolvedAgentAccount; oper: string; formId: string; formInfo: any }) {
         const { agent, oper, formId, formInfo } = params;
-        const payload = {
-            oper: readString(oper),
-            formid: readString(formId),
-            form_info: readObject(formInfo),
-        };
-        if (!payload.oper) throw new Error("oper required");
-        if (!payload.formid) throw new Error("formId required");
-        if (Object.keys(payload.form_info).length === 0) {
-            throw new Error("formInfo required");
+        
+        // Validate oper parameter
+        const operNum = Number(oper);
+        if (!operNum || ![1, 2].includes(operNum)) {
+            throw new Error("oper 必填且必须为 1 或 2：1=全量修改问题，2=全量修改设置");
         }
+        
+        const normalizedFormId = readString(formId);
+        if (!normalizedFormId) throw new Error("formId required");
+        
+        // Build payload based on oper type
+        const payload: Record<string, unknown> = {
+            oper: operNum,
+            formid: normalizedFormId,
+        };
+        
+        if (operNum === 1) {
+            // 全量修改问题：必须提供完整的 form_question 数组
+            if (!formInfo || !formInfo.form_question || !Array.isArray(formInfo.form_question.items)) {
+                throw new Error("oper=1 时，必须提供 form_question.items 数组（包含所有问题，缺失的问题将被删除）");
+            }
+            
+            // Validate questions count ≤ 200
+            const questions = formInfo.form_question.items;
+            if (questions.length > 200) {
+                throw new Error("问题数量不能超过 200 个");
+            }
+            
+            // Validate each question (same as createCollect)
+            questions.forEach((q: any, index: number) => {
+                if (!q.question_id || !Number.isInteger(q.question_id) || q.question_id < 1) {
+                    throw new Error(`第${index + 1}个问题：question_id 必填且必须从 1 开始`);
+                }
+                if (!q.title || readString(q.title).length === 0) {
+                    throw new Error(`第${index + 1}个问题：title 必填`);
+                }
+                if (!q.pos || !Number.isInteger(q.pos) || q.pos < 1) {
+                    throw new Error(`第${index + 1}个问题：pos 必填且必须从 1 开始`);
+                }
+                if (q.reply_type === undefined || !Number.isInteger(q.reply_type)) {
+                    throw new Error(`第${index + 1}个问题：reply_type 必填`);
+                }
+                if (q.must_reply === undefined || typeof q.must_reply !== 'boolean') {
+                    throw new Error(`第${index + 1}个问题：must_reply 必填且必须为布尔值`);
+                }
+                
+                // Validate option_item for single/multiple/dropdown questions
+                const requiresOptions = [2, 3, 15].includes(q.reply_type);
+                if (requiresOptions) {
+                    if (!Array.isArray(q.option_item) || q.option_item.length === 0) {
+                        throw new Error(`第${index + 1}个问题：单选/多选/下拉列表必须提供 option_item 数组`);
+                    }
+                    q.option_item.forEach((opt: any, optIndex: number) => {
+                        if (!opt.key || !Number.isInteger(opt.key) || opt.key < 1) {
+                            throw new Error(`第${index + 1}个问题的第${optIndex + 1}个选项：key 必填且从 1 开始`);
+                        }
+                        if (!opt.value || readString(opt.value).length === 0) {
+                            throw new Error(`第${index + 1}个问题的第${optIndex + 1}个选项：value 必填`);
+                        }
+                    });
+                }
+            });
+            
+            payload.form_info = { form_question: formInfo.form_question };
+            
+        } else if (operNum === 2) {
+            // 全量修改设置：必须提供完整的 form_setting 对象
+            if (!formInfo || !formInfo.form_setting || typeof formInfo.form_setting !== 'object') {
+                throw new Error("oper=2 时，必须提供 form_setting 对象（缺失的设置项将被重置为默认值）");
+            }
+            
+            // Validate timed_repeat_info and timed_finish are mutually exclusive
+            const formSetting = formInfo.form_setting;
+            if (formSetting.timed_repeat_info?.enable && formSetting.timed_finish) {
+                console.warn("警告：timed_finish 与 timed_repeat_info 互斥，若都填优先定时重复");
+            }
+            
+            payload.form_info = { form_setting: formSetting };
+        }
+        
         const json = await this.postWecomDocApi({
             path: "/cgi-bin/wedoc/modify_collect",
             actionLabel: "modify_collect",
@@ -479,9 +665,9 @@ export class WecomDocClient {
         });
         return {
             raw: json,
-            formId: payload.formid,
-            oper: payload.oper,
-            title: readString((payload.form_info as any).form_title),
+            formId: payload.formid as string,
+            oper: payload.oper as string,
+            title: formInfo?.form_title ? readString(formInfo.form_title) : undefined,
         };
     }
 
@@ -571,8 +757,8 @@ export class WecomDocClient {
         };
     }
 
-    async updateDocContent(params: { agent: ResolvedAgentAccount; docId: string; requests: UpdateRequest[]; version?: number }) {
-        const { agent, docId, requests, version } = params;
+    async updateDocContent(params: { agent: ResolvedAgentAccount; docId: string; requests: UpdateRequest[]; version?: number; batchMode?: boolean }) {
+        const { agent, docId, requests, version, batchMode } = params;
         
         // Validate requests structure basic check
         const requestList = readArray(requests);
@@ -655,22 +841,41 @@ export class WecomDocClient {
         
         // Build GridData per official API
         // gridData.rows[i].values[j] must be: {cell_value: {text} | {link: {text, url}}, cell_format?: {...}}
+        const rows = (gridData?.rows || []).map((row: any) => ({
+            values: (row.values || []).map((cell: any) => {
+                // If already CellData format, use as-is
+                if (cell && typeof cell === 'object' && cell.cell_value) {
+                    return cell;
+                }
+                // Otherwise wrap primitive as CellValue
+                return { cell_value: { text: String(cell ?? '') } };
+            })
+        }));
+        
+        // Validate range limits per API spec
+        const rowCount = rows.length;
+        const rowWidths = rows.map((row: any) => row.values?.length || 0);
+        const columnCount = rowWidths.length > 0 ? Math.max(...rowWidths) : 0;
+        const totalCells = rowWidths.reduce((sum: number, width: number) => sum + width, 0);
+        
+        if (rowCount > 1000) {
+            throw new Error(`行数不能超过 1000，当前：${rowCount}`);
+        }
+        if (columnCount > 200) {
+            throw new Error(`列数不能超过 200，当前：${columnCount}`);
+        }
+        if (totalCells > 10000) {
+            throw new Error(`单元格总数不能超过 10000，当前：${totalCells}`);
+        }
+        
         const finalGridData = {
             start_row: startRow,
             start_column: startColumn,
-            rows: (gridData?.rows || []).map((row: any) => ({
-                values: (row.values || []).map((cell: any) => {
-                    // If already CellData format, use as-is
-                    if (cell && typeof cell === 'object' && cell.cell_value) {
-                        return cell;
-                    }
-                    // Otherwise wrap primitive as CellValue
-                    return { cell_value: { text: String(cell ?? '') } };
-                })
-            }))
+            rows: rows
         };
         
         // Build batch_update request per official API
+        // Note: requests array length ≤ 5 per API spec
         const body = {
             docid: normalizedDocId,
             requests: [{
@@ -686,7 +891,11 @@ export class WecomDocClient {
             actionLabel: "spreadsheet_batch_update",
             agent, body,
         });
-        return { raw: json, docId: body.docid as string };
+        return { 
+            raw: json, 
+            docId: body.docid as string,
+            updatedCells: json.data?.responses?.[0]?.update_range_response?.updated_cells || 0
+        };
     }
     
     /**

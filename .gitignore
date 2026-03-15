@@ -101,6 +101,19 @@ temp/
 
 # Project specific
 src/dynamic-agent.test.ts
-docs
+# 文档 Markdown 文件应该提交（README 引用的文档）
+!docs/api-usage-guide.md
+!docs/examples.md
+!docs/update-content-fix.md
+
+# 监控脚本和调试文件不提交
+monitor-pr34.cjs
+fix-pr34-issues.js
+admin_notification.txt
+issue_comments.json
+issues_to_fix.json
+review_comments.json
+pr34-monitor.log
+pr34-fix.log
 .openclaw
 package-lock.json

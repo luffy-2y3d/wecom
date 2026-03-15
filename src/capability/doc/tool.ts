@@ -20,7 +20,7 @@ function mapDocTypeLabel(docType: number): string {
 function summarizeDocInfo(info: any = {}) {
     const docName = readString(info.doc_name) || "未命名文档";
     const docType = mapDocTypeLabel(Number(info.doc_type));
-    return `${docType}“${docName}”信息已获取`;
+    return `${docType}"${docName}"信息已获取`;
 }
 
 function summarizeDocAuth(result: any = {}) {
@@ -77,7 +77,7 @@ function buildDocAuthDiagnosis(result: any = {}, requesterSenderId = "") {
     ];
     const recommendations: string[] = [];
     if (likelyAnonymousLinkFailure) {
-        recommendations.push("当前更像是仅企业内可访问；匿名浏览器或未登录企业微信环境通常会显示“文档不存在”。");
+        recommendations.push('当前更像是仅企业内可访问；匿名浏览器或未登录企业微信环境通常会显示"文档不存在"。');
     }
     if (requester) {
         if (requesterIsCollaborator) {
@@ -176,7 +176,7 @@ function buildShareLinkDiagnosis(params: { shareUrl: string; finalUrl: string; s
     ];
     const recommendations: string[] = [];
     if (likelyUnavailableToGuest) {
-        recommendations.push("当前链接对 guest/未登录企业微信环境返回 blankpage，外部访问会表现为打不开或像“文档不存在”。");
+        recommendations.push('当前链接对 guest/未登录企业微信环境返回 blankpage，外部访问会表现为打不开或像"文档不存在"。');
     }
     if (shareCode) {
         recommendations.push(`当前链接带有分享码 scode=${shareCode}。如分享码过期或未生效，外部访问会失败。`);
@@ -269,7 +269,7 @@ function summarizeDocAccess(result: any = {}) {
 
 function summarizeFormInfo(result: any = {}) {
     const title = readString(result.formInfo?.form_title) || "未命名收集表";
-    return `收集表“${title}”信息已获取`;
+    return `收集表"${title}"信息已获取`;
 }
 
 function summarizeFormAnswer(result: any = {}) {
@@ -346,7 +346,7 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                 const action = params.action;
                 switch (action) {
                     case "create": {
-                        const collaborators = resolveCreateCollaborators({ toolContext, requestParams: params });
+                        const explicitCollaborators = Array.isArray(params.collaborators) ? [...params.collaborators] : [];
                         const result = await docClient.createDoc({
                             agent: account,
                             docName: params.docName,
@@ -356,122 +356,215 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                             adminUsers: params.adminUsers,
                         });
 
+                        // Auto-set security rules for better default permissions (internal users can edit)
+                        try {
+                            await docClient.setDocJoinRule({
+                                agent: account,
+                                docId: result.docId,
+                                request: {
+                                    enable_corp_internal: true,
+                                    corp_internal_auth: 2, // 2 = edit permission
+                                    enable_corp_external: false,
+                                    ban_share_external: false,
+                                },
+                            });
+                        } catch (err) {
+                            // Non-fatal: document created, just default permissions may be read-only
+                        }
+
                         // Handle initial content (title/body separation) if provided
+                        // Supports: string (text) or {type: "text"|"image", content/url: string}
                         let contentResult: any = null;
                         if (Array.isArray(params.init_content) && params.init_content.length > 0) {
                             try {
-                                // 1. Get initial content to find paragraph boundaries
-                                const initContent = await docClient.getDocContent({
-                                    agent: account,
-                                    docId: result.docId,
-                                });
-                                
-                                // We assume a new doc has 1 empty paragraph.
-                                // We will insert content sequentially.
-                                // Note: WeCom API indices shift after insertion.
-                                // Strategy:
-                                // - Insert Para 1 (Title) at 0.
-                                // - Insert Paragraph Break (creates new para).
-                                // - Insert Para 2 (Content) at new index.
-                                // To be safe and follow "Correct Flow", we will do it in a loop or calculate carefully.
-                                // Since batch_update is atomic, indices are relative to start of batch? NO, usually sequential in batch.
-                                // But user says "Must call get_content".
-                                // So we will do it step-by-step for safety as per user instruction.
-                                
-                                let currentContent = initContent;
-                                let requests: UpdateRequest[] = [];
-                                
-                                // If we have content, we treat the first item as "Title" (or first paragraph)
-                                // The doc starts with one empty paragraph.
-                                
-                                // Step 1: Insert first paragraph text at index 0
-                                if (params.init_content[0]) {
-                                    const titleText = String(params.init_content[0]);
-                                    await docClient.updateDocContent({
-                                        agent: account,
-                                        docId: result.docId,
-                                        requests: [{
-                                            insert_text: {
-                                                text: titleText,
-                                                location: { index: 0 }
-                                            }
-                                        }]
-                                    });
+                                // Helper: check if content item is an image
+                                const isImageItem = (item: any): boolean => {
+                                    if (typeof item === "object" && item !== null) {
+                                        return item.type === "image" || (item.url && !item.content);
+                                    }
+                                    if (typeof item === "string") {
+                                        // Detect image URLs
+                                        return item.startsWith("http") &&
+                                            (item.includes(".png") || item.includes(".jpg") ||
+                                             item.includes(".jpeg") || item.includes(".gif") ||
+                                             item.includes("qpic.cn") || item.includes("weixin.qq.com"));
+                                    }
+                                    return false;
+                                };
 
-                                    // Apply Title Styling (Bold)
-                                    // We assume the title is at the start (0) and has the length of the text.
-                                    if (titleText.length > 0) {
+                                // Helper: get image URL from content item
+                                const getImageUrl = (item: any): string => {
+                                    if (typeof item === "object" && item !== null) {
+                                        return item.url || item.content || "";
+                                    }
+                                    return String(item);
+                                };
+
+                                // Helper: download image and convert to base64
+                                const downloadImageAsBase64 = async (url: string): Promise<string> => {
+                                    const response = await fetch(url);
+                                    if (!response.ok) {
+                                        throw new Error(`Failed to download image: ${url}`);
+                                    }
+                                    const arrayBuffer = await response.arrayBuffer();
+                                    return Buffer.from(arrayBuffer).toString("base64");
+                                };
+
+                                // Helper: get text from content item
+                                const getText = (item: any): string => {
+                                    if (typeof item === "object" && item !== null) {
+                                        return item.content || item.text || "";
+                                    }
+                                    return String(item);
+                                };
+
+                                // Step 1: Insert first paragraph (title) at index 0
+                                if (params.init_content[0]) {
+                                    const firstItem = params.init_content[0];
+                                    if (isImageItem(firstItem)) {
+                                        // First item is image - upload first, then insert at index 0
+                                        const imgUrl = getImageUrl(firstItem);
+
+                                        try {
+                                            // Upload image to WeCom to get proper image_id
+                                            const base64 = await downloadImageAsBase64(imgUrl);
+                                            const uploadResult = await docClient.uploadDocImage({
+                                                agent: account,
+                                                docId: result.docId,
+                                                base64_content: base64,
+                                            });
+
+                                            // Insert image using uploaded URL
+                                            // Note: version is optional, API handles concurrency
+                                            await docClient.updateDocContent({
+                                                agent: account,
+                                                docId: result.docId,
+                                                requests: [{
+                                                    insert_image: {
+                                                        image_id: uploadResult.url,
+                                                        location: { index: 0 },
+                                                        width: uploadResult.width,
+                                                        height: uploadResult.height
+                                                    }
+                                                }]
+                                            });
+                                        } catch (uploadErr) {
+                                            console.error(`Failed to upload first image ${imgUrl}:`, uploadErr);
+                                            throw new Error(`First image upload failed: ${uploadErr instanceof Error ? uploadErr.message : String(uploadErr)}`);
+                                        }
+                                    } else {
+                                        const titleText = getText(firstItem);
                                         await docClient.updateDocContent({
                                             agent: account,
                                             docId: result.docId,
                                             requests: [{
-                                                update_text_property: {
-                                                    text_property: { bold: true },
-                                                    ranges: [{ start_index: 0, length: titleText.length }]
+                                                insert_text: {
+                                                    text: titleText,
+                                                    location: { index: 0 }
                                                 }
                                             }]
                                         });
+
+                                        // Apply Title Styling (Bold)
+                                        if (titleText.length > 0) {
+                                            await docClient.updateDocContent({
+                                                agent: account,
+                                                docId: result.docId,
+                                                requests: [{
+                                                    update_text_property: {
+                                                        text_property: { bold: true },
+                                                        ranges: [{ start_index: 0, length: titleText.length }]
+                                                    }
+                                                }]
+                                            });
+                                        }
                                     }
                                 }
 
-                                // Step 2: For subsequent paragraphs, we need to append.
+                                // Step 2: For subsequent items, append with proper paragraph handling
+                                // Per API spec: must get latest version and index before each batch_update
                                 for (let i = 1; i < params.init_content.length; i++) {
-                                    const text = String(params.init_content[i]);
-                                    if (!text) continue;
+                                    const item = params.init_content[i];
 
-                                    // Refresh content to get latest end position
-                                    currentContent = await docClient.getDocContent({
+                                    // Refresh content to get latest document structure and version
+                                    // API requires: version difference ≤ 100 from latest
+                                    const currentContent = await docClient.getDocContent({
                                         agent: account,
                                         docId: result.docId,
                                     });
-                                    
-                                    // Find the end of the document (or last paragraph)
-                                    // We use 'end' directly as the insertion point for appending.
-                                    // Note: WeCom 'end' is exclusive [begin, end).
-                                    // If we insert at 'end', we append after the last element.
-                                    let docEndIndex = currentContent.document.end;
-                                    
-                                    // Safety adjustment: If the document has a final mandatory newline/EOF that we can't append after,
-                                    // we might need to insert *before* it.
-                                    // However, creating a NEW paragraph usually happens at the end.
-                                    // If we are unsure, we try 'end - 1' if 'end' fails, but 'end' is the standard "append" index.
-                                    // Given the user analysis "Paragraph 2 (5-117)" where 5 was the end of Para 1, 
-                                    // it suggests we insert AT the boundary.
-                                    
-                                    // We use insert_paragraph to create a split
-                                    await docClient.updateDocContent({
-                                        agent: account,
-                                        docId: result.docId,
-                                        requests: [{
-                                            insert_paragraph: {
-                                                location: { index: docEndIndex }
-                                            }
-                                        }]
-                                    });
-                                    
-                                    // Now insert text into the new paragraph
-                                    // We need to refresh again or assume index shifted by 1
-                                    currentContent = await docClient.getDocContent({
-                                        agent: account,
-                                        docId: result.docId,
-                                    });
-                                    
-                                    // The new paragraph should be at the end.
-                                    // We want to insert text *into* this new paragraph.
-                                    // The insert_paragraph likely created a new Paragraph node.
-                                    // We insert at the new end (which is inside the new paragraph).
-                                    const newParaIndex = currentContent.document.end; 
-                                    
-                                    await docClient.updateDocContent({
-                                        agent: account,
-                                        docId: result.docId,
-                                        requests: [{
-                                            insert_text: {
-                                                text: text,
-                                                location: { index: newParaIndex }
-                                            }
-                                        }]
-                                    });
+
+                                    // Get the end index of the document
+                                    const docEndIndex = currentContent.document.end;
+                                    const currentVersion = currentContent.version;
+
+                                    if (isImageItem(item)) {
+                                        // Insert image: upload first, then create paragraph, then insert image
+                                        const imgUrl = getImageUrl(item);
+
+                                        try {
+                                            // Step 1: Download and upload image to WeCom
+                                            const base64 = await downloadImageAsBase64(imgUrl);
+                                            const uploadResult = await docClient.uploadDocImage({
+                                                agent: account,
+                                                docId: result.docId,
+                                                base64_content: base64,
+                                            });
+
+                                            // Step 2: Create new paragraph and insert image in one batch (2 operations ≤ 30)
+                                            // Per API spec: all indices are based on the same document snapshot
+                                            // insert_paragraph at docEndIndex creates a new paragraph
+                                            // insert_image at docEndIndex + 1 inserts into the newly created paragraph
+                                            await docClient.updateDocContent({
+                                                agent: account,
+                                                docId: result.docId,
+                                                version: currentVersion,  // Pass version for concurrency control
+                                                requests: [
+                                                    {
+                                                        insert_paragraph: {
+                                                            location: { index: docEndIndex }
+                                                        }
+                                                    },
+                                                    {
+                                                        insert_image: {
+                                                            image_id: uploadResult.url,
+                                                            location: { index: docEndIndex + 1 },
+                                                            width: uploadResult.width,
+                                                            height: uploadResult.height
+                                                        }
+                                                    }
+                                                ]
+                                            });
+                                        } catch (uploadErr) {
+                                            console.error(`Failed to upload image ${imgUrl}:`, uploadErr);
+                                            throw new Error(`Image upload failed: ${uploadErr instanceof Error ? uploadErr.message : String(uploadErr)}`);
+                                        }
+                                    } else {
+                                        const text = getText(item);
+                                        if (!text) continue;
+
+                                        // Insert text: create paragraph and insert text in one batch (2 operations ≤ 30)
+                                        // Per API spec: all indices are based on the same document snapshot
+                                        // insert_paragraph at docEndIndex creates a new paragraph
+                                        // insert_text at docEndIndex + 1 inserts into the newly created paragraph
+                                        await docClient.updateDocContent({
+                                            agent: account,
+                                            docId: result.docId,
+                                            version: currentVersion,  // Pass version for concurrency control
+                                            requests: [
+                                                {
+                                                    insert_paragraph: {
+                                                        location: { index: docEndIndex }
+                                                    }
+                                                },
+                                                {
+                                                    insert_text: {
+                                                        text: text,
+                                                        location: { index: docEndIndex + 1 }
+                                                    }
+                                                }
+                                            ]
+                                        });
+                                    }
                                 }
                                 contentResult = "init_content_populated";
                             } catch (err) {
@@ -480,13 +573,13 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                         }
 
                         let accessResult: any = null;
-                        if ((Array.isArray(params.viewers) && params.viewers.length > 0) || collaborators.length > 0) {
+                        if ((Array.isArray(params.viewers) && params.viewers.length > 0) || explicitCollaborators.length > 0) {
                             try {
                                 accessResult = await docClient.grantDocAccess({
                                     agent: account,
                                     docId: result.docId,
                                     viewers: params.viewers,
-                                    collaborators,
+                                    collaborators: explicitCollaborators,
                                 });
                             } catch (err) {
                                 return buildToolResult({
@@ -499,7 +592,7 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                     docId: result.docId,
                                     title: readString(params.docName),
                                     url: result.url || undefined,
-                                    summary: `已创建${mapDocTypeLabel(result.docType)}“${readString(params.docName)}”（docId: ${result.docId}），但权限授予失败`,
+                                    summary: `已创建${mapDocTypeLabel(result.docType)}"${readString(params.docName)}"（docId: ${result.docId}），但权限授予失败`,
                                     usageHint: buildDocIdUsageHint(result.docId) || undefined,
                                     error: err instanceof Error ? err.message : String(err),
                                     raw: { create: result.raw },
@@ -516,8 +609,8 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                             title: readString(params.docName),
                             url: result.url || undefined,
                             summary: accessResult
-                                ? `已创建${mapDocTypeLabel(result.docType)}“${readString(params.docName)}”（docId: ${result.docId}）；${summarizeDocAccess(accessResult)}` + (contentResult ? `；内容填充: ${contentResult}` : "")
-                                : `已创建${mapDocTypeLabel(result.docType)}“${readString(params.docName)}”（docId: ${result.docId}）` + (contentResult ? `；内容填充: ${contentResult}` : ""),
+                                ? `已创建${mapDocTypeLabel(result.docType)}"${readString(params.docName)}"（docId: ${result.docId}）；${summarizeDocAccess(accessResult)}` + (contentResult ? `；内容填充: ${contentResult}` : "")
+                                : `已创建${mapDocTypeLabel(result.docType)}"${readString(params.docName)}"（docId: ${result.docId}）` + (contentResult ? `；内容填充: ${contentResult}` : ""),
                             usageHint: buildDocIdUsageHint(result.docId) || undefined,
                             raw: accessResult ? { create: result.raw, access: accessResult.raw } : result.raw,
                         });
@@ -534,7 +627,7 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                             accountId: account.accountId,
                             docId: result.docId,
                             title: result.newName,
-                            summary: `文档已重命名为“${result.newName}”`,
+                            summary: `文档已重命名为"${result.newName}"`,
                             raw: result.raw,
                         });
                     }
@@ -733,18 +826,22 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                         });
                     }
                     case "update_content": {
+                        const batchMode = params.batchMode === true;
+                        
                         const result = await docClient.updateDocContent({
                             agent: account,
                             docId: params.docId,
                             requests: params.requests,
                             version: params.version,
+                            batchMode: batchMode,
                         });
+                        
                         return buildToolResult({
                             ok: true,
                             action: "update_content",
                             accountId: account.accountId,
                             docId: params.docId,
-                            summary: "文档内容已更新",
+                            summary: `文档内容已更新（${batchMode ? '批量' : '顺序'}模式）`,
                             raw: result.raw,
                         });
                     }
@@ -811,22 +908,47 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                         });
                     }
                     case "create_collect": {
-                        const result = await docClient.createCollect({
-                            agent: account,
-                            formInfo: params.formInfo,
-                            spaceId: params.spaceId,
-                            fatherId: params.fatherId,
-                        });
-                        const title = readString(result.title);
-                        return buildToolResult({
-                            ok: true,
-                            action: "create_collect",
-                            accountId: account.accountId,
-                            formId: result.formId,
-                            title: title || undefined,
-                            summary: title ? `已创建收集表“${title}”` : "收集表已创建",
-                            raw: result.raw,
-                        });
+                        // 创建收集表（表单）
+                        // 参考 API 规范文档：E8_AF_B7_E4_B8_A5_E6_A0_BC_E6_8C_89_E7_85_A7_E4_BB_A5_E4_B8_---099c30ec-70bd-4e5b-ae03-212de0226a25.docx
+                        try {
+                            const result = await docClient.createCollect({
+                                agent: account,
+                                formInfo: params.formInfo,
+                                spaceId: params.spaceId,
+                                fatherId: params.fatherId,
+                            });
+                            const title = readString(result.title);
+                            return buildToolResult({
+                                ok: true,
+                                action: "create_collect",
+                                accountId: account.accountId,
+                                formId: result.formId,
+                                title: title || undefined,
+                                summary: title ? `已创建收集表"${title}"（formId: ${result.formId}）` : `已创建收集表（formId: ${result.formId}）`,
+                                raw: result.raw,
+                            });
+                        } catch (err) {
+                            // 提供更详细的错误提示
+                            const errorMsg = err instanceof Error ? err.message : String(err);
+                            const hint = `
+创建收集表失败。请检查以下必填项：
+- form_title: 收集表标题（必填）
+- form_question.items: 问题数组（必填，≤200 个）
+- 每个问题必须包含：question_id, title, pos, reply_type, must_reply
+- 单选/多选/下拉列表必须提供 option_item 数组
+- reply_type 对照表：1 文本，2 单选，3 多选，5 位置，9 图片，10 文件，11 日期，14 时间，15 下拉列表，16 体温，17 签名，18 部门，19 成员，22 时长
+
+错误详情：${errorMsg}`;
+                            return buildToolResult({
+                                ok: false,
+                                action: "create_collect",
+                                accountId: account.accountId,
+                                error: errorMsg,
+                                summary: "创建收集表失败",
+                                hint: hint.trim(),
+                                raw: {},
+                            });
+                        }
                     }
                     case "modify_collect": {
                         const result = await docClient.modifyCollect({
@@ -843,7 +965,7 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                             formId: result.formId,
                             title: title || undefined,
                             summary: title
-                                ? `收集表已更新（${result.oper}）：“${title}”`
+                                ? `收集表已更新（${result.oper}）："${title}"`
                                 : `收集表已更新（${result.oper}）`,
                             raw: result.raw,
                         });
