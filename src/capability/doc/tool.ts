@@ -377,8 +377,6 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                         let contentResult: any = null;
                         if (Array.isArray(params.init_content) && params.init_content.length > 0) {
                             try {
-                                console.log(`[wecom-doc] init_content processing: ${params.init_content.length} items`);
-                                
                                 // Helper: check if content item is an image
                                 const isImageItem = (item: any): boolean => {
                                     if (typeof item === "object" && item !== null) {
@@ -402,16 +400,6 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                     return String(item);
                                 };
 
-                                // Helper: download image and convert to base64
-                                const downloadImageAsBase64 = async (url: string): Promise<string> => {
-                                    const response = await fetch(url);
-                                    if (!response.ok) {
-                                        throw new Error(`Failed to download image: ${url}`);
-                                    }
-                                    const arrayBuffer = await response.arrayBuffer();
-                                    return Buffer.from(arrayBuffer).toString("base64");
-                                };
-
                                 // Helper: get text from content item
                                 const getText = (item: any): string => {
                                     if (typeof item === "object" && item !== null) {
@@ -420,19 +408,56 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                     return String(item);
                                 };
 
-                                // Step 1: Insert title at index 0
-                                // Process: insert_paragraph -> get latest content -> insert_text
+                                // Helper: download image from URL or read local file and convert to base64
+                                const getImageAsBase64 = async (imageSource: string): Promise<string> => {
+                                    // Check if it's a local file path or remote URL
+                                    const isLocalFile = !imageSource.startsWith('http') && !imageSource.startsWith('data:');
+                                    
+                                    if (isLocalFile) {
+                                        // Local file path - read using Node.js fs
+                                        const fs = await import('fs');
+                                        const path = await import('path');
+                                        
+                                        // Resolve to absolute path if relative
+                                        const absolutePath = path.isAbsolute(imageSource) 
+                                            ? imageSource 
+                                            : path.join(process.cwd(), imageSource);
+                                        
+                                        if (!fs.existsSync(absolutePath)) {
+                                            throw new Error(`Local image file not found: ${absolutePath}`);
+                                        }
+                                        
+                                        const fileBuffer = fs.readFileSync(absolutePath);
+                                        return fileBuffer.toString("base64");
+                                    } else if (imageSource.startsWith('data:')) {
+                                        // Data URL (base64 already)
+                                        const matches = imageSource.match(/^data:image\/(?:png|jpeg|gif|webp);base64,(.*)$/);
+                                        if (matches && matches[1]) {
+                                            return matches[1];
+                                        }
+                                        throw new Error('Invalid data URL format');
+                                    } else {
+                                        // Remote URL - download first
+                                        console.log(`[wecom-doc] Downloading remote image: ${imageSource.substring(0, 50)}...`);
+                                        const response = await fetch(imageSource);
+                                        if (!response.ok) {
+                                            throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
+                                        }
+                                        const arrayBuffer = await response.arrayBuffer();
+                                        return Buffer.from(arrayBuffer).toString("base64");
+                                    }
+                                };
+
+                                // Step 1: Insert first paragraph (title) at index 0
                                 if (params.init_content[0]) {
                                     const firstItem = params.init_content[0];
-                                    console.log(`[wecom-doc] Processing title: ${isImageItem(firstItem) ? 'image' : 'text'}`);
-                                    
                                     if (isImageItem(firstItem)) {
-                                        // First item is image
+                                        // First item is image - upload first, then insert at index 0
                                         const imgUrl = getImageUrl(firstItem);
-                                        console.log(`[wecom-doc] Title image URL: "${imgUrl.substring(0, 50)}..."`);
 
                                         try {
-                                            const base64 = await downloadImageAsBase64(imgUrl);
+                                            // Upload image to WeCom to get proper image_id
+                                            const base64 = await getImageAsBase64(imgUrl);
                                             const uploadResult = await docClient.uploadDocImage({
                                                 agent: account,
                                                 docId: result.docId,
@@ -440,80 +465,38 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                             });
                                             console.log(`[wecom-doc] Title image uploaded: ${uploadResult.width}x${uploadResult.height}`);
 
-                                            // Step 1a: Insert paragraph at index 0
+                                            // Insert image using uploaded URL
+                                            // Note: version is optional, API handles concurrency
                                             await docClient.updateDocContent({
                                                 agent: account,
                                                 docId: result.docId,
-                                                requests: [{
-                                                    insert_paragraph: {
-                                                        location: { index: 0 }
-                                                    }
-                                                }]
-                                            });
-
-                                            // Step 1b: Get latest content to confirm new index
-                                            const contentAfterParagraph = await docClient.getDocContent({
-                                                agent: account,
-                                                docId: result.docId,
-                                            });
-                                            const paragraphIndex = contentAfterParagraph.document.end - 1;
-                                            console.log(`[wecom-doc] Title paragraph created at index ${paragraphIndex}`);
-
-                                            // Step 1c: Insert image at new paragraph index
-                                            await docClient.updateDocContent({
-                                                agent: account,
-                                                docId: result.docId,
-                                                version: contentAfterParagraph.version,
                                                 requests: [{
                                                     insert_image: {
                                                         image_id: uploadResult.url,
-                                                        location: { index: paragraphIndex },
+                                                        location: { index: 0 },
                                                         width: uploadResult.width,
                                                         height: uploadResult.height
                                                     }
                                                 }]
                                             });
-                                            console.log(`[wecom-doc] Title image inserted successfully at index ${paragraphIndex}`);
                                         } catch (uploadErr) {
-                                            console.error(`[wecom-doc] upload_image_failed: docId=${result.docId.substring(0, 8)}...`, uploadErr instanceof Error ? uploadErr.message : String(uploadErr));
+                                            console.error(`Failed to upload first image ${imgUrl}:`, uploadErr);
                                             throw new Error(`First image upload failed: ${uploadErr instanceof Error ? uploadErr.message : String(uploadErr)}`);
                                         }
                                     } else {
                                         const titleText = getText(firstItem);
-                                        console.log(`[wecom-doc] Title text: "${titleText.substring(0, 50)}..." (${titleText.length} chars)`);
-                                        
-                                        // Step 1a: Insert paragraph at index 0
                                         await docClient.updateDocContent({
                                             agent: account,
                                             docId: result.docId,
                                             requests: [{
-                                                insert_paragraph: {
+                                                insert_text: {
+                                                    text: titleText,
                                                     location: { index: 0 }
                                                 }
                                             }]
                                         });
 
-                                        // Step 1b: Get latest content to confirm new index
-                                        const contentAfterParagraph = await docClient.getDocContent({
-                                            agent: account,
-                                            docId: result.docId,
-                                        });
-
-                                        // Step 1c: Insert text at new paragraph index
-                                        await docClient.updateDocContent({
-                                            agent: account,
-                                            docId: result.docId,
-                                            version: contentAfterParagraph.version,
-                                            requests: [{
-                                                insert_text: {
-                                                    text: titleText,
-                                                    location: { index: contentAfterParagraph.document.end - 1 }
-                                                }
-                                            }]
-                                        });
-                                        console.log(`[wecom-doc] Title text inserted successfully`);
-
-                                        // Step 1d: Apply Title Styling (Bold) - separate operation
+                                        // Apply Title Styling (Bold)
                                         if (titleText.length > 0) {
                                             await docClient.updateDocContent({
                                                 agent: account,
@@ -521,55 +504,37 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                                 requests: [{
                                                     update_text_property: {
                                                         text_property: { bold: true },
-                                                        ranges: [{ start_index: contentAfterParagraph.document.end - 1, length: titleText.length }]
+                                                        ranges: [{ start_index: 0, length: titleText.length }]
                                                     }
                                                 }]
                                             });
-                                            console.log(`[wecom-doc] Title bold style applied successfully`);
                                         }
                                     }
                                 }
 
-                                // Step 2: For subsequent items, insert one by one
-                                // Process for each item: insert_paragraph -> get latest content -> insert_text/image
-                                console.log(`[wecom-doc] Processing ${params.init_content.length - 1} body items`);
+                                // Step 2: For subsequent items, append with proper paragraph handling
+                                // Per API spec: must get latest version and index before each batch_update
                                 for (let i = 1; i < params.init_content.length; i++) {
                                     const item = params.init_content[i];
-                                    console.log(`[wecom-doc] Processing item ${i}: ${isImageItem(item) ? 'image' : 'text'}`);
 
-                                    // Step 2a: Insert paragraph at document end
-                                    const contentBeforeInsert = await docClient.getDocContent({
+                                    // Refresh content to get latest document structure and version
+                                    // API requires: version difference ≤ 100 from latest
+                                    const currentContent = await docClient.getDocContent({
                                         agent: account,
                                         docId: result.docId,
                                     });
-                                    const docEndIndex = contentBeforeInsert.document.end;
-                                    
-                                    await docClient.updateDocContent({
-                                        agent: account,
-                                        docId: result.docId,
-                                        version: contentBeforeInsert.version,
-                                        requests: [{
-                                            insert_paragraph: {
-                                                location: { index: docEndIndex }
-                                            }
-                                        }]
-                                    });
 
-                                    // Step 2b: Get latest content to confirm new paragraph index
-                                    const contentAfterParagraph = await docClient.getDocContent({
-                                        agent: account,
-                                        docId: result.docId,
-                                    });
-                                    const paragraphIndex = contentAfterParagraph.document.end - 1;
-                                    console.log(`[wecom-doc] Created paragraph at index ${paragraphIndex}`);
+                                    // Get the end index of the document
+                                    const docEndIndex = currentContent.document.end;
+                                    const currentVersion = currentContent.version;
 
-                                    // Step 2c: Insert content into the new paragraph
                                     if (isImageItem(item)) {
+                                        // Insert image
                                         const imgUrl = getImageUrl(item);
-                                        console.log(`[wecom-doc] Item ${i} image URL: "${imgUrl.substring(0, 50)}..."`);
 
                                         try {
-                                            const base64 = await downloadImageAsBase64(imgUrl);
+                                            // Upload image to WeCom
+                                            const base64 = await getImageAsBase64(imgUrl);
                                             const uploadResult = await docClient.uploadDocImage({
                                                 agent: account,
                                                 docId: result.docId,
@@ -577,45 +542,60 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                             });
                                             console.log(`[wecom-doc] Item ${i} image uploaded: ${uploadResult.width}x${uploadResult.height}`);
 
-                                            // Step 2c: Insert image into the new paragraph
+                                            // Step 2: Create new paragraph and insert image in one batch (2 operations ≤ 30)
+                                            // Per API spec: all indices are based on the same document snapshot
+                                            // insert_paragraph at docEndIndex creates a new paragraph
+                                            // insert_image at docEndIndex + 1 inserts into the newly created paragraph
                                             await docClient.updateDocContent({
                                                 agent: account,
                                                 docId: result.docId,
-                                                version: contentAfterParagraph.version,
-                                                requests: [{
-                                                    insert_image: {
-                                                        image_id: uploadResult.url,
-                                                        location: { index: paragraphIndex },
-                                                        width: uploadResult.width,
-                                                        height: uploadResult.height
+                                                version: currentVersion,  // Pass version for concurrency control
+                                                requests: [
+                                                    {
+                                                        insert_paragraph: {
+                                                            location: { index: docEndIndex }
+                                                        }
+                                                    },
+                                                    {
+                                                        insert_image: {
+                                                            image_id: uploadResult.url,
+                                                            location: { index: docEndIndex + 1 },
+                                                            width: uploadResult.width,
+                                                            height: uploadResult.height
+                                                        }
                                                     }
-                                                }]
+                                                ]
                                             });
-                                            console.log(`[wecom-doc] Item ${i} image inserted successfully at index ${paragraphIndex}`);
                                         } catch (uploadErr) {
-                                            console.error(`[wecom-doc] upload_image_failed: docId=${result.docId.substring(0, 8)}...`, uploadErr instanceof Error ? uploadErr.message : String(uploadErr));
+                                            console.error(`Failed to upload image ${imgUrl}:`, uploadErr);
                                             throw new Error(`Image upload failed: ${uploadErr instanceof Error ? uploadErr.message : String(uploadErr)}`);
                                         }
                                     } else {
                                         const text = getText(item);
-                                        if (!text) {
-                                            console.warn(`[wecom-doc] Item ${i} has empty text, skipping`);
-                                            continue;
-                                        }
-                                        console.log(`[wecom-doc] Item ${i} text: "${text.substring(0, 50)}..." (${text.length} chars)`);
+                                        if (!text) continue;
 
+                                        // Insert text: create paragraph and insert text in one batch (2 operations ≤ 30)
+                                        // Per API spec: all indices are based on the same document snapshot
+                                        // insert_paragraph at docEndIndex creates a new paragraph
+                                        // insert_text at docEndIndex + 1 inserts into the newly created paragraph
                                         await docClient.updateDocContent({
                                             agent: account,
                                             docId: result.docId,
-                                            version: contentAfterParagraph.version,
-                                            requests: [{
-                                                insert_text: {
-                                                    text: text,
-                                                    location: { index: paragraphIndex }
+                                            version: currentVersion,  // Pass version for concurrency control
+                                            requests: [
+                                                {
+                                                    insert_paragraph: {
+                                                        location: { index: docEndIndex }
+                                                    }
+                                                },
+                                                {
+                                                    insert_text: {
+                                                        text: text,
+                                                        location: { index: docEndIndex + 1 }
+                                                    }
                                                 }
-                                            }]
+                                            ]
                                         });
-                                        console.log(`[wecom-doc] Item ${i} text inserted successfully`);
                                     }
                                 }
                                 contentResult = "init_content_populated";
@@ -1159,7 +1139,6 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                             accountId: account.accountId, 
                             docId: params.docId, 
                             summary: result.records?.length ? `智能表格记录已获取：${result.records.length} 条` : "智能表格记录列表已获取",
-                            records: result.records,
                             total: result.total,
                             has_more: result.has_more,
                             ver: result.ver,
@@ -1174,7 +1153,6 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                             accountId: account.accountId, 
                             docId: params.docId, 
                             summary: result.views?.length ? `智能表格视图已获取：${result.views.length} 个` : "智能表格视图列表已获取",
-                            views: result.views,
                             total: result.total,
                             has_more: result.has_more,
                             raw: result.raw,
@@ -1193,7 +1171,6 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                             accountId: account.accountId,
                             docId: params.docId,
                             summary: `智能表格子表列表已获取：${result.sheets.length} 个`,
-                            sheets: result.sheets,
                             raw: result.raw,
                         });
                     }
@@ -1241,7 +1218,6 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                             accountId: account.accountId, 
                             docId: params.docId, 
                             summary: result.fields?.length ? `智能表格字段已获取：${result.fields.length} 个` : "智能表格字段列表已获取",
-                            fields: result.fields,
                             total: result.total,
                             has_more: result.has_more,
                             raw: result.raw,
