@@ -434,8 +434,7 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                                 base64_content: base64,
                                             });
 
-                                            // Insert image using uploaded URL
-                                            // Note: version is optional, API handles concurrency
+                                            // Insert image at index 0
                                             await docClient.updateDocContent({
                                                 agent: account,
                                                 docId: result.docId,
@@ -455,7 +454,7 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                     } else {
                                         const titleText = getText(firstItem);
                                         
-                                        // Insert title text at index 0 (first position)
+                                        // Insert title text at index 0
                                         await docClient.updateDocContent({
                                             agent: account,
                                             docId: result.docId,
@@ -467,8 +466,7 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                             }]
                                         });
 
-                                        // Apply Title Styling (Bold) - must be in separate request
-                                        // Per API spec (doc.txt line 829-858): update_text_property requires separate operation
+                                        // Apply Title Styling (Bold) - separate operation
                                         if (titleText.length > 0) {
                                             await docClient.updateDocContent({
                                                 agent: account,
@@ -481,28 +479,20 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                                 }]
                                             });
                                         }
-                                        
-                                        // Insert paragraph break after title (separate operation)
-                                        // This ensures title is on its own line
-                                        await docClient.updateDocContent({
-                                            agent: account,
-                                            docId: result.docId,
-                                            requests: [{
-                                                insert_paragraph: {
-                                                    location: { index: titleText.length }
-                                                }
-                                            }]
-                                        });
                                     }
                                 }
 
-                                // Step 2: For subsequent items, append with proper paragraph handling
-                                // Per API spec: must get latest version and index before each batch_update
+                                // Step 2: For subsequent items, append one by one with proper index refresh
+                                // CRITICAL: Each insert changes the document structure, so we must:
+                                // 1. Get latest content before EACH insert
+                                // 2. Use the END index of the latest content
+                                // 3. Execute ONE insert operation per batch
+                                // 4. Repeat for next item
                                 for (let i = 1; i < params.init_content.length; i++) {
                                     const item = params.init_content[i];
 
-                                    // Refresh content to get latest document structure and version
-                                    // API requires: version difference ≤ 100 from latest
+                                    // CRITICAL: Refresh content to get latest document structure
+                                    // API requires: must use latest index for each insert
                                     const currentContent = await docClient.getDocContent({
                                         agent: account,
                                         docId: result.docId,
@@ -513,11 +503,11 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                     const currentVersion = currentContent.version;
 
                                     if (isImageItem(item)) {
-                                        // Insert image: upload first, then create paragraph, then insert image
+                                        // Insert image
                                         const imgUrl = getImageUrl(item);
 
                                         try {
-                                            // Step 1: Download and upload image to WeCom
+                                            // Upload image to WeCom
                                             const base64 = await downloadImageAsBase64(imgUrl);
                                             const uploadResult = await docClient.uploadDocImage({
                                                 agent: account,
@@ -525,30 +515,19 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                                 base64_content: base64,
                                             });
 
-                                            // Step 2: Create new paragraph and insert image in one batch (2 operations ≤ 30)
-                                            // Per API spec (doc.txt line 612): all operations use the SAME document snapshot
-                                            // insert_paragraph at docEndIndex creates a new paragraph
-                                            // insert_image at docEndIndex inserts into the newly created paragraph
-                                            // Both indices are relative to the SAME snapshot before any operations
+                                            // Insert image at end index (single operation)
                                             await docClient.updateDocContent({
                                                 agent: account,
                                                 docId: result.docId,
-                                                version: currentVersion,  // Pass version for concurrency control
-                                                requests: [
-                                                    {
-                                                        insert_paragraph: {
-                                                            location: { index: docEndIndex }
-                                                        }
-                                                    },
-                                                    {
-                                                        insert_image: {
-                                                            image_id: uploadResult.url,
-                                                            location: { index: docEndIndex },  // Same index as paragraph - inserts into the new paragraph
-                                                            width: uploadResult.width,
-                                                            height: uploadResult.height
-                                                        }
+                                                version: currentVersion,
+                                                requests: [{
+                                                    insert_image: {
+                                                        image_id: uploadResult.url,
+                                                        location: { index: docEndIndex },
+                                                        width: uploadResult.width,
+                                                        height: uploadResult.height
                                                     }
-                                                ]
+                                                }]
                                             });
                                         } catch (uploadErr) {
                                             console.error(`[wecom-doc] upload_image_failed: docId=${result.docId.substring(0, 8)}... url=${imgUrl.substring(0, 50)}...`, uploadErr instanceof Error ? uploadErr.message : String(uploadErr));
@@ -558,28 +537,18 @@ export function registerWecomDocTools(api: OpenClawPluginApi) {
                                         const text = getText(item);
                                         if (!text) continue;
 
-                                        // Insert text: create paragraph and insert text in one batch (2 operations ≤ 30)
-                                        // Per API spec (doc.txt line 612): all operations use the SAME document snapshot
-                                        // insert_paragraph at docEndIndex creates a new paragraph
-                                        // insert_text at docEndIndex inserts text INTO the newly created paragraph
-                                        // Both indices are relative to the SAME snapshot before any operations
+                                        // Insert text at end index (single operation)
+                                        // DO NOT combine with insert_paragraph - it changes the document structure
                                         await docClient.updateDocContent({
                                             agent: account,
                                             docId: result.docId,
-                                            version: currentVersion,  // Pass version for concurrency control
-                                            requests: [
-                                                {
-                                                    insert_paragraph: {
-                                                        location: { index: docEndIndex }
-                                                    }
-                                                },
-                                                {
-                                                    insert_text: {
-                                                        text: text,
-                                                        location: { index: docEndIndex }  // Same index as paragraph - inserts into the new paragraph
-                                                    }
+                                            version: currentVersion,
+                                            requests: [{
+                                                insert_text: {
+                                                    text: '\n' + text,  // Prepend newline to create new paragraph
+                                                    location: { index: docEndIndex }
                                                 }
-                                            ]
+                                            }]
                                         });
                                     }
                                 }
