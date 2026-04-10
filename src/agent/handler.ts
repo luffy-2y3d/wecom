@@ -258,6 +258,13 @@ export function shouldProcessAgentInboundMessage(params: {
   };
 }
 
+export function shouldSuppressAgentReplyText(params: {
+  text: string;
+  mediaReplySeen: boolean;
+}): boolean {
+  return params.mediaReplySeen && Boolean(params.text.trim());
+}
+
 function normalizeAgentId(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   const raw = String(value ?? "").trim();
@@ -858,12 +865,14 @@ async function processAgentMessage(params: {
 
   // 5秒无响应自动回复进度提示
   let hasResponseSent = false;
+  const effectiveAgent = upstreamAgent ?? agent;
+  const effectiveReplyTarget = upstreamReplyTarget ?? replyTarget;
   const processingTimer = setTimeout(async () => {
     if (hasResponseSent) return;
     try {
       await sendAgentApiText({
-        agent,
-        ...replyTarget,
+        agent: effectiveAgent,
+        ...effectiveReplyTarget,
         text: "正在处理中，请稍候...",
       });
       log?.(
@@ -876,6 +885,25 @@ async function processAgentMessage(params: {
 
   // 发送队列锁：确保所有 deliver 调用（以及内部的分片发送）严格串行执行
   let messageSendQueue = Promise.resolve();
+  let deferredMediaUrls: string[] = [];
+
+  const mergeDeferredMediaUrls = (mediaUrls: string[]): string[] => {
+    if (mediaUrls.length === 0) {
+      return deferredMediaUrls;
+    }
+    const merged = [...deferredMediaUrls];
+    for (const mediaUrl of mediaUrls) {
+      if (!merged.includes(mediaUrl)) {
+        merged.push(mediaUrl);
+      }
+    }
+    deferredMediaUrls = merged;
+    return deferredMediaUrls;
+  };
+
+  const replyWecomTarget = effectiveReplyTarget.chatId
+    ? ({ chatid: effectiveReplyTarget.chatId } as const)
+    : ({ touser: effectiveReplyTarget.toUser } as const);
 
   try {
     // 调度回复
@@ -886,10 +914,20 @@ async function processAgentMessage(params: {
         disableBlockStreaming: false,
       },
       dispatcherOptions: {
-        deliver: async (payload: { text?: string }, info: { kind: string }) => {
+        deliver: async (payload: ReplyPayload, info: { kind: string }) => {
           const text = payload.text ?? "";
-          // 忽略空文本消息
-          if (!text || !text.trim()) {
+          const incomingMediaUrls = payload.mediaUrls || (payload.mediaUrl ? [payload.mediaUrl] : []);
+          if (info.kind !== "final" && incomingMediaUrls.length > 0) {
+            mergeDeferredMediaUrls(incomingMediaUrls);
+          }
+          const mediaUrls =
+            info.kind === "final"
+              ? mergeDeferredMediaUrls(incomingMediaUrls)
+              : incomingMediaUrls;
+
+          const outboundText = text;
+
+          if ((!outboundText || !outboundText.trim()) && mediaUrls.length === 0) {
             return;
           }
 
@@ -902,18 +940,27 @@ async function processAgentMessage(params: {
           const currentTask = async () => {
             const MAX_CHUNK_SIZE = 600;
             // 确保分片顺序发送
-            for (let i = 0; i < text.length; i += MAX_CHUNK_SIZE) {
-              const chunk = text.slice(i, i + MAX_CHUNK_SIZE);
+            for (let i = 0; i < outboundText.length; i += MAX_CHUNK_SIZE) {
+              const chunk = outboundText.slice(i, i + MAX_CHUNK_SIZE);
 
               try {
-                await sendAgentApiText({ agent, ...replyTarget, text: chunk });
+                if (upstreamAgent) {
+                  await sendUpstreamAgentApiText({
+                    upstreamAgent,
+                    primaryAgent: primaryAgentForUpstream!,
+                    ...effectiveReplyTarget,
+                    text: chunk,
+                  });
+                } else {
+                  await sendAgentApiText({ agent: effectiveAgent, ...effectiveReplyTarget, text: chunk });
+                }
                 touchTransportSession?.({ lastOutboundAt: Date.now(), running: true });
                 log?.(
-                  `[wecom-agent] reply chunk delivered (${info.kind}) to ${isGroup ? `chat:${peerId}` : fromUser}, len=${chunk.length}`,
+                  `[wecom-agent] reply chunk delivered (${info.kind}) to ${isGroup ? `chat:${peerId}` : fromUser}, len=${chunk.length}, sessionKey=${ctxPayload.SessionKey ?? route.sessionKey}, sessionId=${sessionId ?? "N/A"}`,
                 );
 
                 // 强制延时：确保企业微信有足够时间处理顺序（优化：200ms → 50ms）
-                if (i + MAX_CHUNK_SIZE < text.length) {
+                if (i + MAX_CHUNK_SIZE < outboundText.length) {
                   await new Promise((resolve) => setTimeout(resolve, 50));
                 }
               } catch (err: unknown) {
@@ -934,6 +981,57 @@ async function processAgentMessage(params: {
                   error: message,
                 });
               }
+            }
+
+            if (info.kind === "final") {
+              for (const mediaUrl of mediaUrls) {
+                try {
+                  const media = await resolveOutboundMediaAsset({
+                    mediaUrl,
+                    network: effectiveAgent.network,
+                  });
+                  if (upstreamAgent) {
+                    await deliverUpstreamAgentApiMedia({
+                      upstreamAgent,
+                      primaryAgent: primaryAgentForUpstream!,
+                      target: replyWecomTarget,
+                      buffer: media.buffer,
+                      filename: media.filename,
+                      contentType: media.contentType,
+                    });
+                  } else {
+                    await deliverAgentApiMedia({
+                      agent: effectiveAgent,
+                      target: replyWecomTarget,
+                      buffer: media.buffer,
+                      filename: media.filename,
+                      contentType: media.contentType,
+                    });
+                  }
+                  touchTransportSession?.({ lastOutboundAt: Date.now(), running: true });
+                  log?.(
+                    `[wecom-agent] reply media delivered (${info.kind}) to ${isGroup ? `chat:${peerId}` : fromUser}, media=${media.filename}, sessionKey=${ctxPayload.SessionKey ?? route.sessionKey}, sessionId=${sessionId ?? "N/A"}`,
+                  );
+                } catch (err: unknown) {
+                  const message =
+                    err instanceof Error
+                      ? `${err.message}${err.cause ? ` (cause: ${String(err.cause)})` : ""}`
+                      : String(err);
+                  error?.(`[wecom-agent] media reply failed: ${message}`);
+                  auditSink?.({
+                    transport: "agent-callback",
+                    category: "fallback-delivery-failed",
+                    summary: `agent callback media reply failed user=${fromUser} kind=${info.kind}`,
+                    raw: {
+                      transport: "agent-callback",
+                      envelopeType: "xml",
+                      body: msg,
+                    },
+                    error: message,
+                  });
+                }
+              }
+              deferredMediaUrls = [];
             }
 
             // 不同 Block 之间也增加一点间隔（优化：200ms → 50ms）
