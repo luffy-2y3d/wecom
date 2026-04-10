@@ -15,6 +15,7 @@ import {
   shouldUseDynamicAgent,
   ensureDynamicAgentListed,
 } from "../dynamic-agent.js";
+import { setPeerContext } from "../context-store.js";
 import { getWecomRuntime } from "../runtime.js";
 import { registerWecomSourceSnapshot } from "../runtime/source-registry.js";
 import {
@@ -30,16 +31,22 @@ import {
   extractMsgId,
   extractFileName,
   extractAgentId,
+  extractToUser,
 } from "../shared/xml-parser.js";
-import { downloadAgentApiMedia, sendAgentApiText } from "../transport/agent-api/client.js";
+import { resolveOutboundMediaAsset } from "../shared/media-asset.js";
+import { downloadAgentApiMedia, sendAgentApiText, sendUpstreamAgentApiText } from "../transport/agent-api/client.js";
+import { deliverAgentApiMedia } from "../transport/agent-api/delivery.js";
+import { deliverUpstreamAgentApiMedia } from "../transport/agent-api/upstream-delivery.js";
 import type {
   ResolvedAgentAccount,
+  ReplyPayload,
   UnifiedInboundEvent,
   WecomInboundKind,
 } from "../types/index.js";
 import type { WecomAgentInboundMessage } from "../types/index.js";
 import type { TransportSessionPatch } from "../types/index.js";
 import type { WecomRuntimeAuditEvent } from "../types/runtime-context.js";
+import { detectUpstreamUser, createUpstreamAgentConfig, resolveUpstreamCorpConfig } from "../upstream/index.js";
 
 /** 错误提示信息 */
 const ERROR_HELP = "\n\n遇到问题？联系作者: YanHaidao (微信: YanHaidao)";
@@ -121,6 +128,11 @@ function buildTextFilePreview(buffer: Buffer, maxChars: number): string | undefi
   if (!text.trim()) return undefined;
   const truncated = text.length > maxChars ? `${text.slice(0, maxChars)}\n…(已截断)` : text;
   return truncated;
+}
+
+function readContextSessionId(ctx: { SessionId?: string } | Record<string, unknown>): string | undefined {
+  const sessionId = "SessionId" in ctx ? ctx.SessionId : undefined;
+  return typeof sessionId === "string" && sessionId.trim() ? sessionId.trim() : undefined;
 }
 
 /**
@@ -448,9 +460,47 @@ async function processAgentMessage(params: {
   const replyTarget = isGroup
     ? ({ toUser: undefined, chatId: peerId } as const)
     : ({ toUser: fromUser, chatId: undefined } as const);
+  let upstreamAgent: typeof agent | undefined;
+  let upstreamReplyTarget: typeof replyTarget | undefined;
+  let primaryAgentForUpstream: typeof agent | undefined;
   const eventType = String(msg.Event ?? "")
     .trim()
     .toLowerCase();
+
+  // 检测是否是上下游用户
+  const toUserName = extractToUser(msg);
+  const isUpstreamUser = detectUpstreamUser({
+    messageToUserName: toUserName,
+    primaryCorpId: agent.corpId,
+  });
+  
+  if (isUpstreamUser) {
+    log?.(
+      `[wecom-agent] detected upstream user: from=${fromUser} toCorpId=${toUserName}`,
+    );
+
+    // 查找上下游配置，构建上游 Agent 配置
+    const upstreamConfig = resolveUpstreamCorpConfig({
+      upstreamCorpId: toUserName,
+      upstreamCorps: agent.config.upstreamCorps,
+    });
+    if (upstreamConfig) {
+      upstreamAgent = createUpstreamAgentConfig({
+        baseAgent: agent,
+        upstreamCorpId: toUserName,
+        upstreamAgentId: upstreamConfig.agentId,
+      });
+      primaryAgentForUpstream = agent;
+      // 上下游的 replyTarget 与普通 DM 一致（toUser = fromUser）
+      upstreamReplyTarget = isGroup
+        ? ({ toUser: undefined, chatId: peerId } as const)
+        : ({ toUser: fromUser, chatId: undefined } as const);
+    } else {
+      error?.(
+        `[wecom-agent] upstream user detected but no upstream config for corpId=${toUserName}; fallback to primary agent target`,
+      );
+    }
+  }
 
   const resolveInboundKind = (): WecomInboundKind => {
     if (msgType === "event") {
@@ -633,7 +683,16 @@ async function processAgentMessage(params: {
       `[wecom-agent] routing guard: blocked default fallback accountId=${agent.accountId} matchedBy=${route.matchedBy} from=${fromUser}`,
     );
     try {
-      await sendAgentApiText({ agent, ...replyTarget, text: prompt });
+      if (upstreamAgent) {
+        await sendUpstreamAgentApiText({
+          upstreamAgent,
+          primaryAgent: primaryAgentForUpstream!,
+          ...(upstreamReplyTarget ?? replyTarget),
+          text: prompt,
+        });
+      } else {
+        await sendAgentApiText({ agent, ...replyTarget, text: prompt });
+      }
       touchTransportSession?.({ lastOutboundAt: Date.now(), running: true });
       log?.(`[wecom-agent] routing guard prompt delivered to ${fromUser}`);
     } catch (err: unknown) {
@@ -710,7 +769,16 @@ async function processAgentMessage(params: {
       scope: "agent",
     });
     try {
-      await sendAgentApiText({ agent, ...replyTarget, text: prompt });
+      if (upstreamAgent) {
+        await sendUpstreamAgentApiText({
+          upstreamAgent,
+          primaryAgent: primaryAgentForUpstream!,
+          ...(upstreamReplyTarget ?? replyTarget),
+          text: prompt,
+        });
+      } else {
+        await sendAgentApiText({ agent, ...replyTarget, text: prompt });
+      }
       touchTransportSession?.({ lastOutboundAt: Date.now(), running: true });
       log?.(
         `[wecom-agent] unauthorized command: replied to ${isGroup ? `chat:${peerId}` : fromUser}`,
@@ -755,6 +823,27 @@ async function processAgentMessage(params: {
     MediaPath: mediaPath,
     MediaType: mediaType,
     MediaUrl: mediaPath,
+  });
+  const sessionId = readContextSessionId(ctxPayload);
+
+  log?.(
+    `[wecom-agent] session bound: sessionKey=${ctxPayload.SessionKey ?? route.sessionKey} sessionId=${sessionId ?? "N/A"} peer=${peerId} upstream=${String(Boolean(upstreamAgent))}`,
+  );
+
+  registerWecomSourceSnapshot({
+    accountId: agent.accountId,
+    source: "agent-callback",
+    messageId: extractMsgId(msg) ?? undefined,
+    sessionKey: ctxPayload.SessionKey ?? route.sessionKey,
+    sessionId,
+    peerKind: isGroup ? "group" : "direct",
+    peerId,
+    upstreamCorpId: upstreamAgent?.corpId,
+  });
+  setPeerContext(agent.accountId, peerId, {
+    peerKind: isGroup ? "group" : "direct",
+    lastSeen: Date.now(),
+    upstreamCorpId: upstreamAgent?.corpId,
   });
 
   // 记录会话
