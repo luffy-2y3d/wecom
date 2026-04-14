@@ -1,3 +1,8 @@
+---
+title: 配置说明
+nav_order: 4
+---
+
 # 配置说明
 
 本页聚焦 `channels.wecom` 的核心字段与推荐配置方式。

@@ -1,3 +1,8 @@
+---
+title: 常见问题
+nav_order: 10
+---
+
 # 常见问题（FAQ）
 
 ## 1. 为什么建议同时配置 Bot WS 和 Agent？
