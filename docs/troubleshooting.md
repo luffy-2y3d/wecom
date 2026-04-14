@@ -1,6 +1,6 @@
 ---
 title: 排障指南
-nav_order: 9
+nav_order: 8
 ---
 
 # 排障指南

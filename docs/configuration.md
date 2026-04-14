@@ -1,6 +1,6 @@
 ---
 title: 配置说明
-nav_order: 4
+nav_order: 3
 ---
 
 # 配置说明

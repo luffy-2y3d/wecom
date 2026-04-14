@@ -1,6 +1,6 @@
 ---
 title: 部署与发布
-nav_order: 8
+nav_order: 7
 ---
 
 # 部署与发布

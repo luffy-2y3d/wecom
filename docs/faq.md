@@ -1,6 +1,6 @@
 ---
 title: 常见问题
-nav_order: 10
+nav_order: 9
 ---
 
 # 常见问题（FAQ）
