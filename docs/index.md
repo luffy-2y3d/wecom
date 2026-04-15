@@ -14,6 +14,7 @@ nav_order: 1
 - [功能实现原理（代码与配置映射）](./implementation)
 - [菜单事件实现（配置+路由+脚本）](./menu-event)
 - [上下游企业实现（识别+换 token+发送）](./upstream)
+- [场景示例](./scenarios)
 - [部署与发布](./deploy)
 - [排障指南](./troubleshooting)
 - [常见问题](./faq)
