@@ -14,3 +14,6 @@ heading_anchors: true
 
 plugins:
   - jekyll-remote-theme
+
+# 启用子导航，显示下拉式子标题
+nav_depth: 3
