@@ -5,15 +5,15 @@ remote_theme: just-the-docs/just-the-docs
 url: https://yanhaidao.github.io
 baseurl: /wecom
 
-aux_links:
-  "GitHub 仓库":
-    - "https://github.com/YanHaidao/wecom"
-
 search_enabled: true
 heading_anchors: true
 
 plugins:
   - jekyll-remote-theme
+
+aux_links:
+  "GitHub 仓库":
+    - "https://github.com/YanHaidao/wecom"
 
 back_to_top: true
 
@@ -22,21 +22,3 @@ just_the_docs:
   search: true
   kramdown:
     anchor_links: true
-
-navigation: true
-
-nav:
-  - 首页: index.md
-  - 快速开始:
-      - 快速开始指南: quick-start/quick-start.md
-  - 配置说明:
-      - 配置详解: configuration/configuration.md
-  - 功能实现:
-      - 功能实现原理: functionality/implementation.md
-      - 菜单事件实现: functionality/menu-event.md
-  - 上下游企业:
-      - 上下游企业实现: upstream/upstream.md
-  - 部署运维:
-      - 部署与发布: operation/deploy.md
-      - 排障指南: operation/troubleshooting.md
-      - 常见问题: operation/faq.md

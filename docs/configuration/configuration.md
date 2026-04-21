@@ -1,5 +1,5 @@
 ---
-title: 配置说明
+title: 配置详解
 parent: 配置说明
 nav_order: 1
 ---
