@@ -11,12 +11,9 @@ nav_order: 1
 
 - [快速开始](./quick-start)
 - [配置说明](./configuration)
-- [功能实现原理（代码与配置映射）](./implementation)
-- [菜单事件实现（配置+路由+脚本）](./menu-event)
-- [上下游企业实现（识别+换 token+发送）](./upstream)
-- [部署与发布](./deploy)
-- [排障指南](./troubleshooting)
-- [常见问题](./faq)
+- [功能实现](./functionality)
+- [上下游企业](./upstream)
+- [部署运维](./operation)
 
 ## 项目简介
 

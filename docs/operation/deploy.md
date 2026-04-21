@@ -1,6 +1,7 @@
 ---
 title: 部署与发布
-nav_order: 7
+parent: 部署运维
+nav_order: 1
 ---
 
 # 部署与发布

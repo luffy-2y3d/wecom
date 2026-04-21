@@ -1,6 +1,7 @@
 ---
 title: 功能实现原理
-nav_order: 4
+parent: 功能实现
+nav_order: 1
 ---
 
 # 功能实现原理（代码与配置映射）

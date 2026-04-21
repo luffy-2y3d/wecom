@@ -1,6 +1,7 @@
 ---
 title: 上下游企业实现
-nav_order: 6
+parent: 上下游企业
+nav_order: 1
 ---
 
 # 上下游企业实现（识别 + 换 token + 发送）

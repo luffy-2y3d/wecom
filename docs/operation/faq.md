@@ -1,6 +1,7 @@
 ---
 title: 常见问题
-nav_order: 9
+parent: 部署运维
+nav_order: 3
 ---
 
 # 常见问题（FAQ）

@@ -1,6 +1,7 @@
 ---
 title: 菜单事件实现
-nav_order: 5
+parent: 功能实现
+nav_order: 2
 ---
 
 # 菜单事件实现（配置 + 路由 + 脚本）

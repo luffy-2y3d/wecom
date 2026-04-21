@@ -1,6 +1,7 @@
 ---
 title: 排障指南
-nav_order: 8
+parent: 部署运维
+nav_order: 2
 ---
 
 # 排障指南
