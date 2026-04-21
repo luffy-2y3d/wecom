@@ -15,5 +15,28 @@ heading_anchors: true
 plugins:
   - jekyll-remote-theme
 
-nav_exclude:
-  - "**/index.md"
+back_to_top: true
+
+just_the_docs:
+  heading_anchors: true
+  search: true
+  kramdown:
+    anchor_links: true
+
+navigation: true
+
+nav:
+  - 首页: index.md
+  - 快速开始:
+      - 快速开始指南: quick-start/quick-start.md
+  - 配置说明:
+      - 配置详解: configuration/configuration.md
+  - 功能实现:
+      - 功能实现原理: functionality/implementation.md
+      - 菜单事件实现: functionality/menu-event.md
+  - 上下游企业:
+      - 上下游企业实现: upstream/upstream.md
+  - 部署运维:
+      - 部署与发布: operation/deploy.md
+      - 排障指南: operation/troubleshooting.md
+      - 常见问题: operation/faq.md
