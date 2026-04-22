@@ -27,7 +27,7 @@ jobs:
         run: |
           cd docs
           bundle install
-          bundle exec jekyll build --baseurl ""
+          bundle exec jekyll build --baseurl "/wecom"
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
