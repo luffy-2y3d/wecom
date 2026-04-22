@@ -1,0 +1,82 @@
+/* 自定义导航样式 */
+.site-nav {
+  padding: 1rem 0;
+}
+
+.nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-list-item {
+  position: relative;
+}
+
+.nav-list-link {
+  display: block;
+  padding: 0.5rem 1rem;
+  color: #5c5962;
+  text-decoration: none;
+  font-size: 0.875rem;
+  transition: color 0.2s;
+}
+
+.nav-list-link:hover {
+  color: #2c222b;
+  background-color: #f5f5f5;
+}
+
+.nav-list-link.active {
+  color: #2c222b;
+  background-color: #f0f0f0;
+  font-weight: 600;
+}
+
+/* 子导航样式 */
+.nav-list .nav-list {
+  margin-left: 1rem;
+  border-left: 1px solid #e0e0e0;
+}
+
+.nav-list .nav-list-item .nav-list-link {
+  font-size: 0.8125rem;
+  padding-left: 1.5rem;
+}
+
+/* 父级菜单样式 */
+.nav-list-item-parent > .nav-list-link {
+  font-weight: 600;
+  color: #2c222b;
+  background-color: #fafafa;
+}
+
+.nav-list-item-parent > .nav-list-link::before {
+  content: "▶";
+  display: inline-block;
+  margin-right: 0.5rem;
+  font-size: 0.625rem;
+  transition: transform 0.2s;
+}
+
+/* 展开/折叠动画 */
+.nav-list-item-parent .nav-list {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease-out;
+}
+
+.nav-list-item-parent.expanded .nav-list {
+  max-height: 1000px;
+}
+
+.nav-list-item-parent.expanded > .nav-list-link::before {
+  transform: rotate(90deg);
+}
+
+/* 高亮当前页面 */
+.nav-list-link[href*="{{ page.url }}"] {
+  background-color: #e8f4fc;
+  color: #0056b3;
+  font-weight: 600;
+}

@@ -1,0 +1,95 @@
+<div id="site-nav" class="site-nav" aria-label="Site navigation">
+  <ul class="nav-list">
+    <li class="nav-list-item">
+      <a href="{{ site.baseurl }}/" class="nav-list-link{% if page.url == "/" %} active{% endif %}">
+        📄 文档首页
+      </a>
+    </li>
+    
+    <li class="nav-list-item nav-list-item-parent">
+      <a href="{{ site.baseurl }}/quick-start/" class="nav-list-link">
+        📁 快速开始
+      </a>
+      <ul class="nav-list">
+        <li class="nav-list-item">
+          <a href="{{ site.baseurl }}/quick-start/quick-start.html" class="nav-list-link{% if page.url contains 'quick-start/quick-start' %} active{% endif %}">
+            └─ 快速开始指南
+          </a>
+        </li>
+      </ul>
+    </li>
+    
+    <li class="nav-list-item nav-list-item-parent">
+      <a href="{{ site.baseurl }}/configuration/" class="nav-list-link">
+        📁 配置说明
+      </a>
+      <ul class="nav-list">
+        <li class="nav-list-item">
+          <a href="{{ site.baseurl }}/configuration/configuration.html" class="nav-list-link{% if page.url contains 'configuration/configuration' %} active{% endif %}">
+            └─ 配置详解
+          </a>
+        </li>
+      </ul>
+    </li>
+    
+    <li class="nav-list-item nav-list-item-parent">
+      <a href="{{ site.baseurl }}/functionality/" class="nav-list-link">
+        📁 功能实现
+      </a>
+      <ul class="nav-list">
+        <li class="nav-list-item">
+          <a href="{{ site.baseurl }}/functionality/implementation.html" class="nav-list-link{% if page.url contains 'functionality/implementation' %} active{% endif %}">
+            └─ 功能实现原理
+          </a>
+        </li>
+        <li class="nav-list-item">
+          <a href="{{ site.baseurl }}/functionality/menu-event.html" class="nav-list-link{% if page.url contains 'functionality/menu-event' %} active{% endif %}">
+            └─ 菜单事件实现
+          </a>
+        </li>
+      </ul>
+    </li>
+    
+    <li class="nav-list-item nav-list-item-parent">
+      <a href="{{ site.baseurl }}/upstream/" class="nav-list-link">
+        📁 上下游企业
+      </a>
+      <ul class="nav-list">
+        <li class="nav-list-item">
+          <a href="{{ site.baseurl }}/upstream/upstream.html" class="nav-list-link{% if page.url contains 'upstream/upstream' %} active{% endif %}">
+            └─ 上下游企业实现
+          </a>
+        </li>
+      </ul>
+    </li>
+    
+    <li class="nav-list-item nav-list-item-parent">
+      <a href="{{ site.baseurl }}/operation/" class="nav-list-link">
+        📁 部署运维
+      </a>
+      <ul class="nav-list">
+        <li class="nav-list-item">
+          <a href="{{ site.baseurl }}/operation/deploy.html" class="nav-list-link{% if page.url contains 'operation/deploy' %} active{% endif %}">
+            └─ 部署与发布
+          </a>
+        </li>
+        <li class="nav-list-item">
+          <a href="{{ site.baseurl }}/operation/troubleshooting.html" class="nav-list-link{% if page.url contains 'operation/troubleshooting' %} active{% endif %}">
+            └─ 排障指南
+          </a>
+        </li>
+        <li class="nav-list-item">
+          <a href="{{ site.baseurl }}/operation/faq.html" class="nav-list-link{% if page.url contains 'operation/faq' %} active{% endif %}">
+            └─ 常见问题
+          </a>
+        </li>
+      </ul>
+    </li>
+    
+    <li class="nav-list-item">
+      <a href="{{ site.baseurl }}/DEPLOYMENT.html" class="nav-list-link{% if page.url contains 'DEPLOYMENT' %} active{% endif %}">
+        📄 文档更新说明
+      </a>
+    </li>
+  </ul>
+</div>

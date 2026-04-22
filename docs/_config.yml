@@ -22,3 +22,7 @@ just_the_docs:
   search: true
   kramdown:
     anchor_links: true
+  enable_copy_button: true
+  enable_search: true
+
+css_file: "assets/css/custom.css"
