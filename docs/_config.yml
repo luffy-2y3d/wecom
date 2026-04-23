@@ -2,7 +2,7 @@ title: WeCom 帮助文档
 description: OpenClaw WeCom 插件使用与实现说明
 remote_theme: just-the-docs/just-the-docs
 
-url: https://yanhaidao.github.io
+url: https://luffy-2y3d.github.io
 baseurl: /wecom
 
 search_enabled: true
@@ -13,7 +13,7 @@ plugins:
 
 aux_links:
   "GitHub 仓库":
-    - "https://github.com/YanHaidao/wecom"
+    - "https://github.com/luffy-2y3d/wecom"
 
 back_to_top: true
 
