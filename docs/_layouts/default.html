@@ -1,0 +1,35 @@
+---
+layout: base
+---
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>{{ page.title }} - {{ site.title }}</title>
+  
+  {% if site.favicon %}
+  <link rel="icon" type="image/svg+xml" href="{{ site.favicon }}">
+  {% endif %}
+  
+  <link rel="stylesheet" href="{{ site.baseurl }}/assets/css/style.css">
+  <link rel="stylesheet" href="{{ site.baseurl }}/assets/css/just-the-docs.css">
+</head>
+<body>
+  <div class="page-wrapper">
+    {% include navigation/lateral.html %}
+    
+    <main id="main-content" class="main-content" role="main">
+      <div class="content-wrapper">
+        <article class="page" role="article">
+          <h1 id="page-title">{{ page.title }}</h1>
+          {{ content }}
+        </article>
+      </div>
+    </main>
+  </div>
+  
+  <script src="{{ site.baseurl }}/assets/js/just-the-docs.js"></script>
+</body>
+</html>
