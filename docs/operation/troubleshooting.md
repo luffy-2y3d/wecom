@@ -1,4 +1,5 @@
 ---
+layout: default
 title: 排障指南
 parent: 部署运维
 nav_order: 2

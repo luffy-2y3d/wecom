@@ -1,4 +1,5 @@
 ---
+layout: default
 title: 部署与发布
 parent: 部署运维
 nav_order: 1

@@ -1,4 +1,5 @@
 ---
+layout: default
 title: 快速开始
 parent: 快速开始
 nav_order: 1

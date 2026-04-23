@@ -1,4 +1,5 @@
 ---
+layout: default
 title: 文档更新说明
 nav_order: 99
 ---

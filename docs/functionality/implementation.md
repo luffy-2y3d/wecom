@@ -1,4 +1,5 @@
 ---
+layout: default
 title: 功能实现原理
 parent: 功能实现
 nav_order: 1

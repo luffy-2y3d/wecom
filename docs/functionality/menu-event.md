@@ -1,4 +1,5 @@
 ---
+layout: default
 title: 菜单事件实现
 parent: 功能实现
 nav_order: 2
