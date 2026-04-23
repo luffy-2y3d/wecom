@@ -57,15 +57,22 @@ layout: base
   max-width: 100%;
 }
 
-/* 隐藏不需要的元素 */
-/* 移除返回顶部按钮 */
-button.back-to-top {
+/* 删除所有按钮 - 完全移除返回顶部按钮 */
+button.back-to-top,
+button.copy-to-clipboard-button,
+.btn,
+.page button,
+article button,
+.content-wrapper button,
+.page div button,
+article div button {
   display: none !important;
-}
-
-/* 移除复制按钮（如果不需要） */
-button.copy-to-clipboard-button {
-  opacity: 0.5;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
 }
 
 /* 调整标题样式 */
@@ -82,6 +89,12 @@ button.copy-to-clipboard-button {
   border: 1px solid #e1e4e8;
   border-radius: 6px;
   background: #f6f8fa;
+  position: relative;
+}
+
+/* 移除代码块右上角的复制按钮 */
+.page pre::before {
+  display: none;
 }
 
 /* 链接样式 */
@@ -92,5 +105,11 @@ button.copy-to-clipboard-button {
 
 .page a:hover {
   text-decoration: underline;
+}
+
+/* 移除页面右上角的按钮容器 */
+.page > div:last-child,
+.content-wrapper > div:last-child {
+  display: none !important;
 }
 </style>
