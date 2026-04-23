@@ -33,14 +33,64 @@ layout: base
 </html>
 
 <style>
+/* 主内容区域 */
 #main-content {
-  margin-left: 260px !important;
-  padding: 2rem;
+  margin-left: 260px;
+  padding: 2rem 3rem;
   min-height: 100vh;
+  background: white;
 }
 
+/* 内容容器边框 */
 .content-wrapper {
   max-width: 1000px;
   margin: 0 auto;
+  background: white;
+  border: 1px solid #e1e4e8;
+  border-radius: 8px;
+  padding: 2.5rem 3rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* 文章样式 */
+.page {
+  max-width: 100%;
+}
+
+/* 隐藏不需要的元素 */
+/* 移除返回顶部按钮 */
+button.back-to-top {
+  display: none !important;
+}
+
+/* 移除复制按钮（如果不需要） */
+button.copy-to-clipboard-button {
+  opacity: 0.5;
+}
+
+/* 调整标题样式 */
+.page h1:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-bottom: 2px solid #0366d6;
+  padding-bottom: 1rem;
+  margin-bottom: 2rem;
+}
+
+/* 代码块样式 */
+.page pre {
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  background: #f6f8fa;
+}
+
+/* 链接样式 */
+.page a {
+  color: #0366d6;
+  text-decoration: none;
+}
+
+.page a:hover {
+  text-decoration: underline;
 }
 </style>
