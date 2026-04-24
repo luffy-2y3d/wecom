@@ -25,7 +25,7 @@ git push origin main
 2. 等待GitHub Actions构建完成（约2-3分钟）
 
 3. 检查构建状态：
-   - 访问 https://github.com/YanHaidao/wecom/actions
+   - 访问 https://github.com/luffy-2y3d/wecom/actions
    - 查看"Deploy GitHub Pages" workflow的运行状态
 
 4. 如果构建失败，点击失败的workflow查看错误日志
