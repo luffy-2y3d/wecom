@@ -57,6 +57,17 @@ layout: base
   max-width: 100%;
 }
 
+/* 图片样式 - 自适应网页宽度 */
+.page img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1rem 0;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
 /* 删除所有按钮 - 完全移除返回顶部按钮 */
 button.back-to-top,
 button.copy-to-clipboard-button,
@@ -111,5 +122,22 @@ article div button {
 .page > div:last-child,
 .content-wrapper > div:last-child {
   display: none !important;
+}
+
+/* 响应式设计 - 移动端适配 */
+@media (max-width: 768px) {
+  #main-content {
+    margin-left: 0;
+    padding: 1rem;
+  }
+  
+  .content-wrapper {
+    padding: 1.5rem;
+  }
+  
+  .page img {
+    max-width: 100%;
+    border-radius: 4px;
+  }
 }
 </style>
