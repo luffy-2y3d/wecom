@@ -192,4 +192,4 @@ openclaw channels status --probe
 - **监控配置**：设置适当的监控，及时发现和处理问题
 - **定期备份**：定期备份配置文件，以防配置丢失
 
-详细配置请继续阅读 [配置说明](./configuration)。
+详细配置请继续阅读 [配置说明](../configuration/configuration)。

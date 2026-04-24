@@ -150,8 +150,8 @@ nav_order: 1
 
 ## 五、推荐阅读顺序
 
-1. 先看 [菜单事件实现](./menu-event)。
-2. 再看 [上下游企业实现](./upstream)。
-3. 回到 [配置说明](./configuration) 合并成最终生产配置。
-4. 参考 [部署与发布](./deploy) 进行部署。
-5. 遇到问题查看 [排障指南](./troubleshooting)。
+1. 先看 [菜单事件实现](./menu-event)
+2. 再看 [上下游企业实现](../upstream/upstream)
+3. 回到 [配置说明](../configuration/configuration) 合并成最终生产配置
+4. 参考 [部署与发布](../operation/deploy) 进行部署
+5. 遇到问题查看 [排障指南](../operation/troubleshooting)

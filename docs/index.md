@@ -75,14 +75,14 @@ has_children: true
 
 ## 文档导航
 
-- [快速开始](./quick-start) - 5分钟快速上手
-- [配置说明](./configuration) - 详细配置指南
-- [上下游企业](./upstream) - 跨企业消息发送
-- [部署运维](./operation) - 部署与故障排查
+- [快速开始](./quick-start/quick-start) - 5分钟快速上手
+- [配置说明](./configuration/configuration) - 详细配置指南
+- [上下游企业](./upstream/upstream) - 跨企业消息发送
+- [部署运维](./operation/deploy) - 部署与故障排查
 
 ## 你可以从哪里开始
 
-- 想尽快跑通：先看 [快速开始](./quick-start)
-- 想按生产模式部署：看 [配置说明](./configuration) + [部署运维](./operation)
-- 想支持上下游企业发消息：看 [上下游企业](./upstream)
-- 遇到消息不回或连接不稳：看 [部署运维](./operation)
+- 想尽快跑通：先看 [快速开始](./quick-start/quick-start)
+- 想按生产模式部署：看 [配置说明](./configuration/configuration) + [部署运维](./operation/deploy)
+- 想支持上下游企业发消息：看 [上下游企业](./upstream/upstream)
+- 遇到消息不回或连接不稳：看 [部署运维](./operation/deploy)

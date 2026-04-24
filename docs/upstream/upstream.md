@@ -341,6 +341,6 @@ openclaw logs --channel wecom --lines 200
 
 ## 10. 相关文档
 
-- [配置说明](./configuration)
-- [功能实现原理](./implementation)
-- [排障指南](./troubleshooting)
+- [配置说明](../configuration/configuration)
+- [功能实现原理](../functionality/implementation)
+- [排障指南](../operation/troubleshooting)
