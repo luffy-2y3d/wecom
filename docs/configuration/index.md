@@ -1,4 +1,5 @@
 ---
+layout: default
 title: 配置说明
 parent: 首页
 nav_order: 3

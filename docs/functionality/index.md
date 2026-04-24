@@ -1,4 +1,5 @@
 ---
+layout: default
 title: 功能实现
 parent: 首页
 nav_order: 4

@@ -1,4 +1,5 @@
 ---
+layout: default
 title: 上下游企业
 parent: 首页
 nav_order: 5

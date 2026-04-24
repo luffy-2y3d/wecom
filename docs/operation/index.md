@@ -1,4 +1,5 @@
 ---
+layout: default
 title: 部署运维
 parent: 首页
 nav_order: 6
