@@ -17,15 +17,15 @@ nav_order: 1
 
 登录企业微信管理后台（https://work.weixin.qq.com/），进入 **应用管理** > **自建** 页面，点击 **创建应用**。
 
-![创建企业微信机器人步骤1](../assets/configuration-images/创建机器人1.png)
+![创建企业微信机器人步骤1](/wecom/assets/configuration-images/创建机器人1.png)
 
-![创建企业微信机器人步骤2](../assets/configuration-images/创建机器人2.png)
+![创建企业微信机器人步骤2](/wecom/assets/configuration-images/创建机器人2.png)
 
 ### 2. 获取 Bot ID 和 Secret
 
 创建应用后，在应用详情页面获取必要信息：
 
-![获取Bot ID和Secret](../assets/configuration-images/获取Bot ID和Secret.png)
+![获取Bot ID和Secret](/wecom/assets/configuration-images/获取Bot%20ID和Secret.png)
 
 需要获取以下信息：
 - **AgentId**（即 Bot ID）
