@@ -41,18 +41,37 @@ layout: base
       const nav = document.querySelector('.site-nav');
       
       if (toggle && nav) {
+        function closeNav() {
+          nav.classList.remove('is-open');
+          toggle.classList.remove('is-open');
+          document.body.classList.remove('nav-open');
+        }
+        
+        function openNav() {
+          nav.classList.add('is-open');
+          toggle.classList.add('is-open');
+          document.body.classList.add('nav-open');
+        }
+        
         toggle.addEventListener('click', function() {
-          nav.classList.toggle('is-open');
-          toggle.classList.toggle('is-open');
-          document.body.classList.toggle('nav-open');
+          if (nav.classList.contains('is-open')) {
+            closeNav();
+          } else {
+            openNav();
+          }
         });
         
         document.addEventListener('click', function(e) {
           if (!nav.contains(e.target) && !toggle.contains(e.target)) {
-            nav.classList.remove('is-open');
-            toggle.classList.remove('is-open');
-            document.body.classList.remove('nav-open');
+            closeNav();
           }
+        });
+        
+        const navLinks = nav.querySelectorAll('a');
+        navLinks.forEach(function(link) {
+          link.addEventListener('click', function() {
+            closeNav();
+          });
         });
       }
     });
