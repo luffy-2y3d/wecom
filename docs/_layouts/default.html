@@ -215,26 +215,15 @@ layout: base
   text-decoration: underline;
 }
 
+/* ===================== */
 /* 移动端适配 - 平板和手机 */
+/* ===================== */
 @media (max-width: 1024px) {
-  .mobile-nav-toggle {
-    display: block;
-  }
-  
-  #main-content {
-    margin-left: 0;
-    padding: 5rem 1.5rem 2rem 1.5rem;
-  }
-  
-  .content-wrapper {
-    padding: 1.5rem;
-    border-radius: 6px;
-  }
-  
+  /* 默认隐藏导航栏 */
   .site-nav {
     position: fixed;
     top: 0;
-    left: -280px;
+    left: -300px !important;
     width: 280px;
     height: 100vh;
     background: white;
@@ -243,12 +232,15 @@ layout: base
     overflow-y: auto;
     transition: left 0.3s ease;
     padding-top: 4rem;
+    margin: 0 !important;
   }
   
+  /* 导航栏展开状态 */
   .site-nav.is-open {
-    left: 0;
+    left: 0 !important;
   }
   
+  /* 遮罩层 */
   body.nav-open::before {
     content: '';
     position: fixed;
@@ -258,6 +250,20 @@ layout: base
     bottom: 0;
     background: rgba(0,0,0,0.5);
     z-index: 999;
+  }
+  
+  .mobile-nav-toggle {
+    display: block;
+  }
+  
+  #main-content {
+    margin-left: 0 !important;
+    padding: 5rem 1.5rem 2rem 1.5rem;
+  }
+  
+  .content-wrapper {
+    padding: 1.5rem;
+    border-radius: 6px;
   }
   
   .page {
@@ -398,6 +404,7 @@ layout: base
   
   .site-nav {
     width: 260px;
+    left: -280px !important;
   }
 }
 </style>
