@@ -7,103 +7,260 @@ nav_order: 3
 
 # 常见问题（FAQ）
 
-## 配置相关问题
+## 一、部署相关
 
-### 1. 为什么建议同时配置 Bot WS 和 Agent？
+### Q1：需要什么环境才能运行？
 
-`Bot WS` 适合实时对话体验，`Agent` 适合正式通知和兜底发送。两者并存可兼顾体验与稳定性。
+**最低要求**：
+- Node.js v18+
+- 内存：1GB+
+- 网络：能够访问 `qyapi.weixin.qq.com`
 
-### 2. 启用 dynamicAgents 的意义是什么？
+**快速试用**：只需Bot WS模式，无需固定公网IP
+**生产环境**：建议Bot WS + Agent模式，需要固定公网IP用于接收回调
 
-它会按用户/群维度做会话隔离，减少多人并发时上下文串线。
+---
 
-### 3. 我只想快速试用，最少要配什么？
+### Q2：Bot WS和Agent有什么区别？
 
-最少配置一个 `Bot WS` 账号（`botId` + `secret`）即可开始验证。
+| 对比项 | Bot WS | Agent |
+|--------|--------|-------|
+| 配置难度 | ⭐ 简单，5分钟配置 | ⭐⭐⭐ 较复杂 |
+| 对话体验 | ⭐⭐⭐ 最佳，实时流式 | ⭐⭐ 良好 |
+| 公网要求 | 无需固定IP | 需要固定IP+回调配置 |
+| 消息发送 | 会话内追发 | 主动推送+回调 |
+| 适合场景 | 实时聊天 | 组织通知+自动化 |
 
-## 功能使用问题
+**推荐**：先用Bot WS跑起来，后续平滑补Agent
 
-### 4. 本地文件存在，但为什么发不出去？
+---
 
-常见原因是路径不在允许目录中。请检查 `media.localRoots` 与 `mediaMaxMb`。
+### Q3：为什么建议同时配置Bot和Agent？
 
-### 5. 如何给上下游企业用户发消息？
+本插件的核心价值在于**兼顾体验与能力**：
 
-在 `agent.upstreamCorps` 中配置下游企业 `corpId` 与 `agentId` 映射，详见 [上下游企业实现](./upstream)。
+- **Bot WS**：负责实时对话、流式回复
+- **Agent**：负责组织级通知、正式投递兜底
 
-### 6. 如何配置菜单事件？
+两者并存 = 体验好 + 能力全
 
-在 `agent.eventRouting` 中配置路由规则，详见 [菜单事件实现](./menu-event)。
+---
 
-## 安装与部署问题
+### Q4：多人同时使用会串上下文吗？
 
-### 7. Guided Setup 无法识别 WeCom 怎么办？
+**不会！** 本插件的核心特性之一就是**多人上下文隔离**：
 
-先确认插件已安装并启用，再升级到兼容版本后重试 `openclaw channels add`。
+- 按 `(底层账号 + 部门/群组/人员)` 动态切分运行上下文
+- 同一个企业微信入口可以承接多人并发使用
+- 不会出现"张三的问题让李四接上回答"的串流灾难
 
-### 8. 插件安装失败怎么办？
+---
 
-- 检查网络连接
-- 确保 OpenClaw 版本兼容
-- 尝试使用 `openclaw plugins install --force @yanhaidao/wecom` 强制安装
+### Q5：长任务会不会白跑？
 
-### 9. 如何升级插件？
+**不会！** 本插件专门处理了这个问题：
+
+- 先保活，再流式推进
+- 必要时走备用投递路径
+- 把最终结果交付出去
+
+---
+
+## 二、配置相关
+
+### Q6：最少要配什么？
+
+**最低配置**：只需一个Bot WS账号
+```json
+{
+  "bot": {
+    "ws": {
+      "botId": "YOUR_BOT_ID",
+      "secret": "YOUR_BOT_SECRET"
+    }
+  }
+}
+```
+
+5分钟内就能跑起来！
+
+---
+
+### Q7：敏感信息怎么管理？
+
+**推荐使用环境变量**：
+```bash
+export WECOM_BOT_ID="your-bot-id"
+export WECOM_BOT_SECRET="your-bot-secret"
+```
+
+在配置中引用：
+```json
+{
+  "bot": {
+    "ws": {
+      "botId": "${WECOM_BOT_ID}",
+      "secret": "${WECOM_BOT_SECRET}"
+    }
+  }
+}
+```
+
+---
+
+### Q8：Bot凭证和Agent凭证有什么区别？
+
+| 对比项 | Bot凭证 | Agent凭证 |
+|--------|---------|-----------|
+| 获取位置 | 企业微信应用详情 | 企业微信应用详情 |
+| 用途 | Bot WS认证 | API调用认证 |
+| 失效影响 | 无法收发消息 | 无法主动推送 |
+
+---
+
+## 三、功能相关
+
+### Q9：如何给上下游企业用户发消息？
+
+在配置中添加 `upstreamCorps`：
+```json
+{
+  "agent": {
+    "upstreamCorps": {
+      "DOWNSTREAM_CORP_KEY": {
+        "corpId": "DOWNSTREAM_CORP_ID",
+        "agentId": DOWNSTREAM_AGENT_ID
+      }
+    }
+  }
+}
+```
+
+详细配置见：[上下游企业实现](../upstream/upstream)
+
+---
+
+### Q10：如何配置菜单事件？
+
+在配置中添加 `eventRouting`：
+```json
+{
+  "agent": {
+    "eventRouting": {
+      "unmatchedAction": "forwardToAgent",
+      "routes": [
+        {
+          "id": "test-click",
+          "when": {
+            "eventType": "click",
+            "eventKey": "TEST_KEY"
+          },
+          "handler": {
+            "type": "node_script",
+            "script": "console.log(event);"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+详细配置见：[菜单事件实现](../functionality/menu-event)
+
+---
+
+### Q11：本地文件发送失败怎么办？
+
+检查两点：
+1. **路径配置**：文件路径必须在 `media.localRoots` 中
+```json
+{
+  "media": {
+    "localRoots": ["/srv/shared", "/data/reports"]
+  }
+}
+```
+
+2. **文件大小**：不能超过 `mediaMaxMb` 限制
+
+---
+
+## 四、运维相关
+
+### Q12：服务启动失败怎么办？
+
+**排查步骤**：
+```bash
+# 1. 检查配置
+openclaw config validate
+
+# 2. 查看错误日志
+pm2 logs openclaw --err
+
+# 3. 重启服务
+pm2 restart openclaw
+```
+
+---
+
+### Q13：如何升级插件？
 
 ```bash
+# 查看当前版本
+openclaw plugins list
+
+# 升级
 openclaw plugins update @yanhaidao/wecom
-openclaw restart
+
+# 重启
+pm2 restart openclaw
 ```
 
-## 故障排查问题
+---
 
-### 10. 消息发送失败怎么办？
-
-- 检查企业微信凭证是否正确
-- 确认目标用户/群聊在应用可见范围内
-- 查看 OpenClaw 日志获取详细错误信息
-
-### 11. 机器人不回复消息怎么办？
-
-- 检查 Bot WS 连接状态
-- 确认 AI 模型配置正确
-- 查看 `openclaw logs` 中的错误信息
-
-### 12. 如何查看插件运行状态？
+### Q14：如何备份配置？
 
 ```bash
-openclaw channels status --probe
+# 备份
+cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak.$(date +%Y%m%d)
+
+# 恢复
+cp ~/.openclaw/openclaw.json.bak.20240101 ~/.openclaw/openclaw.json
+pm2 restart openclaw
 ```
 
-## 性能与安全问题
+---
 
-### 13. 如何提高插件性能？
+### Q15：如何监控服务状态？
 
-- 启用消息缓存
-- 合理配置 `dynamicAgents`
-- 优化脚本执行时间
+```bash
+# 检查状态
+openclaw channels status --probe
 
-### 14. 如何保证凭证安全？
+# 查看指标
+# - configured=true ✅
+# - running=true ✅
+# - connected=true ✅
+# - authenticated=true ✅
+```
 
-- 使用环境变量存储敏感信息
-- 定期更新企业微信应用密钥
-- 限制应用权限范围
+---
 
-### 15. 如何处理高并发场景？
+## 五、更多帮助
 
-- 配置多个账号
-- 启用动态会话隔离
-- 使用负载均衡
+### 需要技术支持？
 
-## 其他问题
+1. **查看文档**：https://yanhaidao.github.io/wecom/
+2. **GitHub Issues**：https://github.com/YanHaidao/wecom/issues
+3. **提交Issue**：请附上诊断信息和复现步骤
 
-### 16. 插件支持哪些企业微信版本？
+### 收集诊断信息
 
-支持企业微信 3.0 及以上版本。
+```bash
+# 创建诊断报告
+openclaw diagnose > diagnose.txt
 
-### 17. 如何获取企业微信的 CorpID 和 AgentId？
-
-登录企业微信管理后台，进入应用管理页面查看。
-
-### 18. 插件是否支持多语言？
-
-当前版本主要支持中文，后续版本将增加英文支持。
+# 查看日志
+openclaw channels logs --channel wecom --lines 500 > logs.txt
+```
